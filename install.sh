@@ -1,7 +1,7 @@
 #!/bin/sh
 # Install the shed CLI and its agent skill.
 #
-#   curl -fsSL https://raw.githubusercontent.com/shed-sh/cli/main/install-all.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/shed-sh/cli/main/install.sh | sh
 #
 # Each half has its own script — install-cli.sh and install-skills.sh — and
 # this one only runs both, so there is exactly one implementation of each
@@ -17,7 +17,7 @@ usage() {
 	cat <<'EOF'
 Install the shed CLI and its agent skill.
 
-Usage: install-all.sh [options]
+Usage: install.sh [options]
 
   --version <v>     Install a specific CLI version (default: latest release)
   --bin-dir <dir>   Where to put the binary (default: ~/.local/bin, or the
@@ -40,7 +40,7 @@ while [ $# -gt 0 ]; do
 		exit 0
 		;;
 	*)
-		echo "install-all.sh: unknown option $1" >&2
+		echo "install.sh: unknown option $1" >&2
 		usage >&2
 		exit 2
 		;;
@@ -60,7 +60,7 @@ run_part() {
 	tmp="$(mktemp)"
 	trap 'rm -f "$tmp"' EXIT
 	curl --proto '=https' --proto-redir '=https' -fsSL "$BASE_URL/$name" -o "$tmp" || {
-		echo "install-all.sh: could not download $name" >&2
+		echo "install.sh: could not download $name" >&2
 		exit 1
 	}
 	sh "$tmp" "$@"
