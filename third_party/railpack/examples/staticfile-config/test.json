@@ -1,0 +1,17 @@
+[
+  {
+    "httpCheck": {
+      "path": "/invalid",
+      "expected": 404,
+      "internalPort": 80
+    }
+  },
+  {
+    "httpCheck": {
+      "internalPort": 80,
+      "path": "/",
+      "expected": 200,
+      "expectedOutput": "Railpack Static File"
+    }
+  }
+]

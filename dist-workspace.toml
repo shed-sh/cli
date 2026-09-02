@@ -1,0 +1,62 @@
+[workspace]
+members = ["dist:."]
+
+[package]
+name = "shed"
+version = "0.1.0"
+# The *public* releases repository. dist bakes this URL into the shell
+# installer and the Homebrew formula as the download location, so it must be
+# the repo the assets actually land in (github-releases-repo below), never
+# this private source repo — installers pointing here would 404 for everyone.
+repository = "https://github.com/shed-sh/cli"
+description = "CLI for deploying and sharing small software"
+homepage = "https://shed.codes"
+binaries = ["shed"]
+build-command = ["./dist-build.sh"]
+
+[dist]
+cargo-dist-version = "0.32.0"
+
+# Never upload a source tarball: this repository is private, and dist would
+# otherwise publish its full source to the public releases repo.
+source-tarball = false
+ci = ["github"]
+installers = ["shell", "homebrew", "npm"]
+
+# Bare `shed` on npm belongs to someone else, so the package is scoped:
+# `npm install -g @shed-sh/shed` (bun reads the same registry). Publishing
+# needs an NPM_TOKEN secret for the shed-sh npm org.
+npm-scope = "@shed-sh"
+
+# The tap the Homebrew formula is written to. Matches what goreleaser used, so
+# `brew install shed-sh/tap/shed` keeps working.
+tap = "shed-sh/homebrew-tap"
+publish-jobs = ["homebrew", "npm"]
+
+# Without this dist would install to $CARGO_HOME/bin, which is its Rust
+# default and means nothing for a Go binary. This is the same precedence uv
+# uses, and it keeps ~/.local/bin as the fallback so anyone who installed with
+# the old script finds the binary in the place it already lived.
+install-path = ["$XDG_BIN_HOME/", "$XDG_DATA_HOME/../bin", "~/.local/bin"]
+
+# The installer configures PATH, so `shed login` works in the next shell
+# without anyone editing a profile by hand. No backticks in this message: the
+# installer expands it in a double-quoted shell string, so backticks would be
+# executed as command substitution.
+install-success-msg = "shed is installed! Run 'shed login' to connect it to your account."
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-unknown-linux-gnu",
+]
+
+# This repository is private, so its release assets are private too and
+# install.sh could not download them. Releases are published to the public
+# shed-sh/cli repository instead, which is also where the agent skill and
+# the installer are mirrored. Needs a GH_RELEASES_TOKEN secret with contents
+# write on that repository; the default GITHUB_TOKEN only reaches this one.
+github-releases-repo = "shed-sh/cli"
+
+[dist.github-custom-runners]
+global = "ubuntu-latest"

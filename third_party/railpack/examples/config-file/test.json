@@ -1,0 +1,18 @@
+[
+  {
+    "expectedOutput": "Kernel"
+  },
+  {
+    "expectedOutput": "custom start",
+    "configFile": "railpack.other.json"
+  },
+  {
+    "expectedOutput": "Hello via Bun",
+    "configFile": "railpack.invalid.json",
+    "shouldFail": true
+  },
+  {
+    "configFile": "railpack.malformed.json",
+    "shouldFail": true
+  }
+]

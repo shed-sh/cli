@@ -1,0 +1,88 @@
+version: "3"
+
+tasks:
+  build:
+    desc: Build the local Shed CLI
+    cmds:
+      - go build -o shed ./cmd/shed
+
+  format:
+    desc: Format all Go source files
+    cmds:
+      - gofmt -w .
+
+  format-check:
+    desc: Verify that all Go source files are formatted
+    cmds:
+      - |
+        unformatted="$(gofmt -l .)"
+        if [ -n "$unformatted" ]; then
+          echo "Run task format on:"
+          echo "$unformatted"
+          exit 1
+        fi
+
+  generate:
+    desc: Regenerate the documentation set from the command and language registries
+    cmds:
+      - go run ./cmd/shed-docs
+
+  generate-check:
+    desc: Verify the generated documentation matches its registries
+    cmds:
+      - go run ./cmd/shed-docs -check
+
+  plugin-validate:
+    desc: Validate the Claude Code plugin manifest (requires the claude CLI)
+    cmds:
+      - claude plugin validate .
+
+  lint:
+    desc: Run the same Go linter used by CI
+    vars:
+      GOLANGCI_LINT_BIN: '{{default "golangci-lint" .GOLANGCI_LINT_BIN}}'
+    cmds:
+      - '"{{.GOLANGCI_LINT_BIN}}" run --timeout=5m'
+
+  typecheck:
+    desc: Run Go static checks
+    cmds:
+      - go vet ./...
+      - task: typecheck-railpack
+
+  typecheck-railpack:
+    desc: Run static checks for vendored Railpack
+    dir: third_party/railpack
+    cmds:
+      - go vet ./...
+
+  test:
+    desc: Run Shed and vendored Railpack provider tests
+    vars:
+      PACKAGES: '{{default "./..." .CLI_ARGS}}'
+    cmds:
+      - go test -count=1 {{.PACKAGES}}
+      - task: test-railpack
+
+  test-railpack:
+    desc: Run the retained Railpack provider suite without mise resolution
+    dir: third_party/railpack
+    cmds:
+      - go test -count=1 ./...
+
+  test-e2e-docker:
+    desc: Build, run, update, verify, and remove the Docker E2E fixture
+    env:
+      SHED_E2E_DOCKER: "1"
+    cmds:
+      - go test -count=1 -timeout=8m ./internal/e2e -run DockerEndToEnd -v
+
+  check:
+    desc: Run the complete local CI validation suite
+    cmds:
+      - task: format-check
+      - task: generate-check
+      - task: lint
+      - task: test
+      - task: typecheck
+      - task: build

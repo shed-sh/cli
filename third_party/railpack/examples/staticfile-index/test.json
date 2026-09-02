@@ -1,0 +1,21 @@
+[
+  {
+    "expectedOutput": "using config from file"
+  },
+  {
+    "httpCheck": {
+      "path": "/",
+      "expected": 200,
+      "internalPort": 80,
+      "expectedOutput": "Railpack Static File"
+    }
+  },
+  // by default SPA mode / index fallback should not be enabled
+  {
+    "httpCheck": {
+      "path": "/invalid",
+      "expected": 404,
+      "internalPort": 80
+    }
+  }
+]

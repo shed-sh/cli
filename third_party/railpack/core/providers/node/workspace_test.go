@@ -1,0 +1,198 @@
+package node
+
+import (
+	"testing"
+
+	testingUtils "github.com/railwayapp/railpack/core/testing"
+	"github.com/stretchr/testify/require"
+)
+
+func TestWorkspace(t *testing.T) {
+	tests := []struct {
+		name          string
+		path          string
+		hasWorkspaces bool
+		numPackages   int
+	}{
+		{
+			name:          "npm workspaces",
+			path:          "../../../examples/node-npm-workspaces",
+			hasWorkspaces: true,
+			numPackages:   3,
+		},
+		{
+			name:          "pnpm workspaces",
+			path:          "../../../examples/node-pnpm-workspaces",
+			hasWorkspaces: true,
+			numPackages:   2,
+		},
+		{
+			name:          "no workspaces",
+			path:          "../../../examples/node-npm",
+			hasWorkspaces: false,
+			numPackages:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := testingUtils.CreateGenerateContext(t, tt.path)
+			workspace, err := NewWorkspace(ctx.App)
+			require.NoError(t, err)
+
+			require.Equal(t, tt.hasWorkspaces, workspace.HasWorkspaces())
+			require.Equal(t, tt.numPackages, len(workspace.Packages))
+
+			if tt.hasWorkspaces && tt.name == "npm workspaces" {
+				api := workspace.GetPackage("packages/api")
+				require.NotNil(t, api)
+				require.Equal(t, "@monorepo/api", api.PackageJson.Name)
+
+				shared := workspace.GetPackage("packages/shared")
+				require.NotNil(t, shared)
+				require.Equal(t, "@monorepo/shared", shared.PackageJson.Name)
+
+				web := workspace.GetPackage("packages/web")
+				require.NotNil(t, web)
+				require.Equal(t, "@monorepo/web", web.PackageJson.Name)
+			} else if tt.hasWorkspaces && tt.name == "pnpm workspaces" {
+				pkgA := workspace.GetPackage("packages/pkg-a")
+				require.NotNil(t, pkgA)
+				require.Equal(t, "pkg-a", pkgA.PackageJson.Name)
+
+				pkgB := workspace.GetPackage("packages/pkg-b")
+				require.NotNil(t, pkgB)
+				require.Equal(t, "pkg-b", pkgB.PackageJson.Name)
+			}
+		})
+	}
+}
+
+func TestConvertWorkspacePattern(t *testing.T) {
+	tests := []struct {
+		name     string
+		pattern  string
+		expected string
+	}{
+		{
+			name:     "single level pattern",
+			pattern:  "packages/*",
+			expected: "packages/*/package.json",
+		},
+		{
+			name:     "recursive pattern",
+			pattern:  "packages/**",
+			expected: "packages/**/package.json",
+		},
+		{
+			name:     "direct path",
+			pattern:  "packages/foo",
+			expected: "packages/foo/package.json",
+		},
+		{
+			name:     "already has package.json",
+			pattern:  "packages/foo/package.json",
+			expected: "packages/foo/package.json/package.json",
+		},
+		{
+			name:     "very short pattern",
+			pattern:  "db",
+			expected: "db/package.json",
+		},
+		{
+			name:     "single character pattern",
+			pattern:  "a",
+			expected: "a/package.json",
+		},
+		{
+			name:     "empty pattern",
+			pattern:  "",
+			expected: "package.json",
+		},
+		{
+			name:     "pattern ending with slash",
+			pattern:  "apps/",
+			expected: "apps/package.json",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := convertWorkspacePattern(tt.pattern)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestWorkspaceAllPackageJson(t *testing.T) {
+	tests := []struct {
+		name        string
+		path        string
+		numExpected int
+	}{
+		{
+			name:        "npm workspaces",
+			path:        "../../../examples/node-npm-workspaces",
+			numExpected: 4,
+		},
+		{
+			name:        "pnpm workspaces",
+			path:        "../../../examples/node-pnpm-workspaces",
+			numExpected: 3,
+		},
+		{
+			name:        "no workspaces",
+			path:        "../../../examples/node-npm",
+			numExpected: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := testingUtils.CreateGenerateContext(t, tt.path)
+			workspace, err := NewWorkspace(ctx.App)
+			require.NoError(t, err)
+
+			all := workspace.AllPackageJson()
+			require.Equal(t, tt.numExpected, len(all))
+		})
+	}
+}
+
+func TestWorkspaceHasProductionDependency(t *testing.T) {
+	tests := []struct {
+		name       string
+		path       string
+		dependency string
+		want       bool
+	}{
+		{
+			name:       "root production dependency",
+			path:       "../../../examples/node-playwright",
+			dependency: "playwright",
+			want:       true,
+		},
+		{
+			name:       "root development dependency",
+			path:       "../../../examples/node-npm",
+			dependency: "typescript",
+			want:       false,
+		},
+		{
+			name:       "workspace production dependency",
+			path:       "../../../examples/node-npm-workspaces",
+			dependency: "express",
+			want:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := testingUtils.CreateGenerateContext(t, tt.path)
+			workspace, err := NewWorkspace(ctx.App)
+			require.NoError(t, err)
+
+			require.Equal(t, tt.want, workspace.HasProductionDependency(tt.dependency))
+		})
+	}
+}

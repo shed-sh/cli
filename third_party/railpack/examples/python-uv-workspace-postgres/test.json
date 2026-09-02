@@ -1,0 +1,5 @@
+[
+  {
+    "expectedOutput": "Connection: postgresql://localhost/test"
+  }
+]

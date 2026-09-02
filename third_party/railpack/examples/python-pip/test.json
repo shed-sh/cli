@@ -1,0 +1,8 @@
+[
+  {
+    "expectedOutput": [
+      "Python version: 3.11.11",
+      "Hello from pip"
+    ]
+  }
+]

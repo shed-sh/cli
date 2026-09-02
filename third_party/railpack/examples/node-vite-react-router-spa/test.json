@@ -1,0 +1,18 @@
+[
+  {
+    // No expectedOutput because content is rendered client-side
+    "httpCheck": {
+      "path": "/",
+      "expected": 200,
+      "internalPort": 80
+    }
+  },
+  {
+    // SPA index fallback: unmatched routes should return index.html so client-side router can handle them
+    "httpCheck": {
+      "path": "/nonexistent",
+      "expected": 200,
+      "internalPort": 80
+    }
+  }
+]

@@ -1,0 +1,5 @@
+# mise-installed pnpm is mainly what we are testing here: do extensions with C extensions properly download, compile, etc
+
+[tools]
+node = "latest"
+pnpm = "latest"

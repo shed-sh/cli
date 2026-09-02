@@ -1,0 +1,17 @@
+[
+  {
+    "expectedOutput": "Listening on",
+    // TanStack Start outputs to stderr during server startup
+    "stderrAllowed": true
+  },
+  {
+    "httpCheck": {
+      "path": "/",
+      "expected": 200,
+      "internalPort": 3000,
+      "expectedOutput": "Welcome Home!!!"
+    },
+    // TanStack Start outputs to stderr during server startup
+    "stderrAllowed": true
+  }
+]

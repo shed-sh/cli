@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "node",
+  "packages": {
+    "python": "latest"
+  },
+  "buildAptPackages": ["neofetch"],
+  "steps": {
+    "build": {
+      "commands": ["neofetch"],
+      "variables": {
+        "HELLO": "world"
+      }
+    }
+  },
+  "deploy": {
+    "inputs": ["..."],
+    "aptPackages": ["neofetch"],
+    "startCommand": "python --version && neofetch $HELLO"
+  }
+}

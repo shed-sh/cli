@@ -1,0 +1,11 @@
+[
+  {
+    "expectedOutput": [
+    	"Node 22.22.0",
+    	"hello from Bun",
+    ],
+    "envs": {
+      "RAILPACK_NODE_VERSION": "22.22.0"
+    }
+  }
+]

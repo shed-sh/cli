@@ -1,0 +1,73 @@
+<!-- Generated from the shed CLI's own command registry. Do not edit by hand. -->
+
+# `shed` CLI — full command reference
+
+Every command, flag, and default below is generated from the registry the CLI
+itself parses with, so this file cannot describe a flag the binary does not have.
+Run `shed help --output json` for the same contract as machine-readable JSON.
+
+## Global conventions
+
+- `--output` accepts `human`, `json`, and `ndjson`, though the accepted set and
+  the default differ per command — see each command below.
+- In JSON and NDJSON modes, human progress goes to stderr so stdout stays
+  parseable.
+- Every command is non-interactive except `shed login`, which opens a browser
+  and waits for it. With `--no-browser` it reads a verification code from stdin
+  instead.
+- `shed <directory>` is shorthand for `shed deploy <directory>`.
+- A mistyped command gets a "did you mean" suggestion.
+- Exit status is 1 on any error. The failure envelope in JSON is:
+
+```json
+{"type":"result","outcome":"failed",
+ "failure":{"code":"...","message":"...","recoverable":false,"operation":"..."}}
+```
+
+`code` is stable; `message` is prose and may be reworded. Branch on the code.
+
+## Commands at a glance
+
+| Command | Purpose |
+|---|---|
+{{- range .Groups }}
+{{- range .Commands }}
+| `shed {{ .Signature }}` | {{ cell .Summary }} |
+{{- end }}
+{{- end }}
+{{ range .Groups }}
+## {{ .Title }}
+{{ range .Commands }}
+### `shed {{ .Signature }}`
+
+{{ .Summary }}.
+{{ if .Aliases }}
+Also spelled {{ aliases .Aliases }}.
+{{ end -}}
+{{ if .Flags }}
+| Flag | Type | Default | Purpose |
+|---|---|---|---|
+{{- range .Flags }}
+| `--{{ .Name }}{{ with .Argument }} {{ cell . }}{{ end }}` | {{ .Kind }} | {{ with .Default }}`{{ . }}`{{ else }}—{{ end }} | {{ cell .Summary }} |
+{{- end }}
+{{ end -}}
+{{ if .Exclusive }}
+Mutually exclusive: {{ exclusives .Exclusive }}.
+{{ end -}}
+{{ if .UsageLine }}
+Wrong argument count returns `{{ .UsageLine }}`.
+{{ end -}}
+{{ if .Examples }}
+```
+{{ examples .Examples }}
+```
+{{ end -}}
+{{ end }}
+{{- end }}
+## Environment variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+{{- range .Environment }}
+| `{{ .Name }}` | {{ with .Default }}`{{ . }}`{{ else }}—{{ end }} | {{ cell .Summary }} |
+{{- end }}

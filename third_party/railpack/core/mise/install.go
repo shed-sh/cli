@@ -1,0 +1,290 @@
+package mise
+
+import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
+	_ "embed"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+
+	"github.com/charmbracelet/log"
+)
+
+//go:embed version.txt
+var Version string
+
+const githubReleaseBase = "https://github.com/jdx/mise/releases/download"
+
+// returns name of the mise binary based on the operating system
+func getBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf("mise-%s.exe", Version)
+	}
+	return fmt.Sprintf("mise-%s", Version)
+}
+
+// returns platform-specific mise github asset download name
+func getAssetName(goos, goarch string) (string, error) {
+	var platform string
+
+	switch {
+	case goos == "linux" && goarch == "amd64":
+		platform = "linux-x64-musl"
+	case goos == "linux" && goarch == "arm64":
+		platform = "linux-arm64-musl"
+	case goos == "linux" && goarch == "arm":
+		platform = "linux-armv7-musl"
+	case goos == "darwin" && goarch == "amd64":
+		platform = "macos-x64"
+	case goos == "darwin" && goarch == "arm64":
+		platform = "macos-arm64"
+	case goos == "windows" && goarch == "amd64":
+		platform = "windows-x64"
+	case goos == "windows" && goarch == "arm64":
+		platform = "windows-arm64"
+	default:
+		return "", fmt.Errorf("unsupported platform: %s %s", goos, goarch)
+	}
+
+	extension := "tar.gz"
+	if goos == "windows" {
+		extension = "zip"
+	}
+
+	return fmt.Sprintf("mise-v%s-%s.%s", Version, platform, extension), nil
+}
+
+// getBinaryPath returns the full path to the binary
+func getBinaryPath(cacheDir string) string {
+	return filepath.Join(cacheDir, getBinaryName())
+}
+
+// ensures the mise binary (at the pinned version) is installed and returns its path
+func ensureInstalled(cacheDir string) (string, error) {
+	binaryPath := getBinaryPath(cacheDir)
+
+	if _, err := os.Stat(binaryPath); err == nil {
+		log.Debugf("Mise executable exists at %s", binaryPath)
+		return binaryPath, nil
+	}
+
+	log.Debugf("Mise %s not found, installing", Version)
+
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create cache directory: %w", err)
+	}
+
+	if err := downloadAndInstall(cacheDir); err != nil {
+		return "", fmt.Errorf("failed to download and install: %w", err)
+	}
+
+	if err := validateInstallation(cacheDir); err != nil {
+		return "", fmt.Errorf("failed to validate installation: %w", err)
+	}
+
+	log.Debugf("Installed mise version: %s to %s", Version, binaryPath)
+
+	return binaryPath, nil
+}
+
+func downloadAndInstall(cacheDir string) error {
+	assetName, err := getAssetName(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("%s/v%s/%s", githubReleaseBase, Version, assetName)
+	binaryPath := getBinaryPath(cacheDir)
+
+	log.Debugf("Downloading mise from %s", url)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to download mise: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	// Create temporary directory
+	tempDir, err := os.MkdirTemp("", "mise-install")
+	if err != nil {
+		return fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	archivePath := filepath.Join(tempDir, assetName)
+	f, err := os.Create(archivePath)
+	if err != nil {
+		return fmt.Errorf("failed to create archive file: %w", err)
+	}
+
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("failed to save archive: %w", err)
+	}
+	_ = f.Close()
+
+	if runtime.GOOS == "windows" {
+		err = extractZip(archivePath, binaryPath)
+	} else {
+		err = extractTarGz(archivePath, binaryPath)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to extract archive: %w", err)
+	}
+
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(binaryPath, 0755); err != nil {
+			return fmt.Errorf("failed to set executable permissions: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func extractTarGz(archivePath, binaryPath string) error {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+
+	gzr, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = gzr.Close() }()
+
+	tr := tar.NewReader(gzr)
+	binaryPathInArchive := "mise/bin/mise"
+	found := false
+
+	writeAndMove, cleanup, err := createAtomicWriter(binaryPath)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	return writeAndMove(func(tempFile *os.File) error {
+		for {
+			header, err := tr.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return err
+			}
+
+			if header.Name == binaryPathInArchive {
+				if _, err := io.Copy(tempFile, tr); err != nil {
+					return err
+				}
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			return fmt.Errorf("binary not found in archive at %s", binaryPathInArchive)
+		}
+
+		return nil
+	})
+}
+
+func extractZip(archivePath, binaryPath string) error {
+	r, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = r.Close() }()
+
+	writeAndMove, cleanup, err := createAtomicWriter(binaryPath)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	binaryName := getBinaryName()
+	for _, f := range r.File {
+		if strings.HasSuffix(f.Name, binaryName) {
+			rc, err := f.Open()
+			if err != nil {
+				return err
+			}
+
+			err = writeAndMove(func(tempFile *os.File) error {
+				_, err := io.Copy(tempFile, rc)
+				_ = rc.Close()
+				return err
+			})
+
+			return err
+		}
+	}
+
+	return fmt.Errorf("binary not found in archive")
+}
+
+func validateInstallation(cacheDir string) error {
+	binaryPath := getBinaryPath(cacheDir)
+	cmd := exec.Command(binaryPath, "--version")
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to run version check: %w", err)
+	}
+
+	versionOutput := string(output)
+	if !strings.Contains(versionOutput, Version) {
+		return fmt.Errorf("mise version mismatch: expected %s, got %s", Version, strings.TrimSpace(versionOutput))
+	}
+
+	return nil
+}
+
+// creates a temporary file and returns a function to atomically write content to the final destination
+func createAtomicWriter(targetPath string) (writeAndMove func(write func(tempFile *os.File) error) error, cleanup func(), err error) {
+	tempFile, err := os.CreateTemp(filepath.Dir(targetPath), "mise-temp-*")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tempPath := tempFile.Name()
+
+	success := false
+	cleanup = func() {
+		_ = tempFile.Close()
+		if !success {
+			_ = os.Remove(tempPath)
+		}
+	}
+
+	writeAndMove = func(write func(tempFile *os.File) error) error {
+		if err := write(tempFile); err != nil {
+			return err
+		}
+
+		if err := tempFile.Close(); err != nil {
+			return fmt.Errorf("failed to close temp file: %w", err)
+		}
+
+		if runtime.GOOS != "windows" {
+			if err := os.Chmod(tempPath, 0755); err != nil {
+				return fmt.Errorf("failed to set executable permissions: %w", err)
+			}
+		}
+
+		if err := os.Rename(tempPath, targetPath); err != nil {
+			return fmt.Errorf("failed to move temp file to target: %w", err)
+		}
+
+		success = true
+		return nil
+	}
+
+	return writeAndMove, cleanup, nil
+}
