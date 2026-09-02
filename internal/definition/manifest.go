@@ -161,8 +161,20 @@ func (m Manifest) Validate() error {
 	if m.Run.Port < 1 || m.Run.Port > 65535 {
 		return fmt.Errorf("run.port must be between 1 and 65535")
 	}
+	// These three are concatenated verbatim into generated Dockerfile
+	// directives, so a line break in any of them would smuggle in extra
+	// directives that no field of the manifest declares.
+	if strings.ContainsAny(m.Run.WorkingDirectory, "\r\n\x00") {
+		return errors.New("run.workingDirectory must be a single-line path")
+	}
+	if strings.ContainsAny(m.Run.User, " \t\r\n\x00") {
+		return errors.New("run.user must be a single-line user or user:group reference")
+	}
+	if strings.ContainsAny(m.Run.StopSignal, " \t\r\n\x00") {
+		return errors.New("run.stopSignal must be a single signal name")
+	}
 	for key, value := range m.Run.Environment {
-		if key == "" || strings.ContainsAny(key, "=\x00") || strings.ContainsRune(value, '\x00') {
+		if key == "" || strings.ContainsAny(key, "= \t\r\n\x00") || strings.ContainsRune(value, '\x00') {
 			return fmt.Errorf("run.environment contains an invalid entry")
 		}
 	}

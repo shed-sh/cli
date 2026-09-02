@@ -1,0 +1,5 @@
+# Build output. `go build ./cmd/shed` and dist-build.sh write the binary
+# here; dist stages release artifacts under target/. Neither belongs in
+# history — the release workflow regenerates target/distrib from scratch.
+/shed
+/target/

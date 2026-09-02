@@ -59,7 +59,7 @@ run_part() {
 	fi
 	tmp="$(mktemp)"
 	trap 'rm -f "$tmp"' EXIT
-	curl -fsSL "$BASE_URL/$name" -o "$tmp" || {
+	curl --proto '=https' --proto-redir '=https' -fsSL "$BASE_URL/$name" -o "$tmp" || {
 		echo "install-all.sh: could not download $name" >&2
 		exit 1
 	}

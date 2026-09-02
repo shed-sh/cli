@@ -67,7 +67,7 @@ fi
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-curl -fsSL "$installer_url" -o "$tmp/shed-installer.sh" ||
+curl --proto '=https' --proto-redir '=https' -fsSL "$installer_url" -o "$tmp/shed-installer.sh" ||
 	die "could not download the installer for '$VERSION' from $REPO.
 Check that the version exists and has published releases."
 

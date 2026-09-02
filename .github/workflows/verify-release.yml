@@ -80,6 +80,31 @@ jobs:
             exit 1
           fi
 
+      # The published .sha256 must match the artifact it sits beside, and the
+      # installer users pipe to sh should verify it. A release where either
+      # fails installs unverifiable code on every user machine.
+      - name: Release artifacts must pass integrity checks
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          base="https://github.com/shed-sh/cli/releases/download/v$VERSION"
+          artifact="shed-x86_64-unknown-linux-gnu.tar.xz"
+          fetch() { curl --proto '=https' --proto-redir '=https' -fsSL "$1" -o "$2"; }
+          fetch "$base/$artifact" "$RUNNER_TEMP/$artifact"
+          fetch "$base/$artifact.sha256" "$RUNNER_TEMP/$artifact.sha256"
+          want="$(awk '{print $1}' "$RUNNER_TEMP/$artifact.sha256")"
+          got="$(sha256sum "$RUNNER_TEMP/$artifact" | awk '{print $1}')"
+          if [[ "$want" != "$got" ]]; then
+            echo "published sha256 does not match $artifact: want $want, got $got"
+            exit 1
+          fi
+          echo "$artifact matches its published sha256"
+          fetch "$base/shed-installer.sh" "$RUNNER_TEMP/shed-installer.sh"
+          if ! grep -Eq '_checksum_value="[0-9a-f]{16,}"' "$RUNNER_TEMP/shed-installer.sh"; then
+            echo "::warning title=Installer skips checksum verification::shed-installer.sh for v$VERSION has no embedded artifact digests, so it installs whatever the download host serves. Fix the dist pipeline so _checksum_value is populated."
+          fi
+
       - name: The installed binary must report the released version
         shell: bash
         env:
