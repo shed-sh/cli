@@ -1,22 +1,21 @@
 name: Publish AUR package
 
-# Renders .github/aur/*.tmpl with the release's version and checksums and
-# pushes them to the shed-bin AUR repository, so `paru -S shed-bin` installs
-# the same artifacts every other channel ships.
+# Publish step of release.yml (wired in through publish-jobs in
+# dist-workspace.toml). Renders .github/aur/*.tmpl with the release's version
+# and checksums and pushes them to the shed-bin AUR repository, so
+# `paru -S shed-bin` installs the same artifacts every other channel ships.
 #
-# Needs an AUR_SSH_PRIVATE_KEY secret: an SSH key registered to an
-# aur.archlinux.org account that owns the shed-bin package base. Without the
-# secret the workflow succeeds as a no-op, so AUR publishing can be adopted by
+# Runs after the release assets are uploaded, so the checksums it needs are
+# already live. Needs an AUR_SSH_PRIVATE_KEY secret: an SSH key registered to
+# an aur.archlinux.org account that owns the shed-bin package base. Without
+# the secret the job succeeds as a no-op, so AUR publishing can be adopted by
 # adding the secret rather than by editing this file.
 on:
-  push:
-    tags:
-      - "v[0-9]*"
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      version:
-        description: Version to publish (defaults to the pushed tag)
-        required: false
+      plan:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -33,14 +32,15 @@ jobs:
       - name: Resolve the version
         id: version
         shell: bash
+        env:
+          PLAN: ${{ inputs.plan }}
         run: |
-          version="${{ github.event.inputs.version }}"
-          if [[ -z "$version" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            version="${GITHUB_REF_NAME}"
-          fi
-          version="${version#v}"
+          version="$(echo "$PLAN" | jq -r '.releases[0].app_version // empty')"
           if [[ -z "$version" ]]; then
-            echo "No version could be resolved from the pushed tag or input."
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ -z "$version" ]]; then
+            echo "No version could be resolved from the plan or the ref."
             exit 1
           fi
           echo "value=$version" >> "$GITHUB_OUTPUT"
@@ -58,8 +58,6 @@ jobs:
             echo "present=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # dist uploads the release assets from a parallel workflow, so the
-      # checksums may not exist yet — retry until the release is live.
       - name: Fetch the release checksums
         if: steps.creds.outputs.present == 'true'
         shell: bash
@@ -68,19 +66,8 @@ jobs:
         run: |
           base="https://github.com/shed-sh/cli/releases/download/v${VERSION}"
           for name in shed-x86_64-unknown-linux-gnu.tar.xz.sha256 shed-aarch64-unknown-linux-gnu.tar.xz.sha256; do
-            ok=""
-            for attempt in $(seq 1 20); do
-              if curl -fsSL "$base/$name" -o "$RUNNER_TEMP/$name"; then
-                ok=1
-                break
-              fi
-              echo "$name not published yet (attempt $attempt); retrying in 30s"
-              sleep 30
-            done
-            if [[ -z "$ok" ]]; then
-              echo "the release checksum $name never appeared"
-              exit 1
-            fi
+            curl --proto '=https' --proto-redir '=https' --retry 5 --retry-delay 5 -fsSL \
+              "$base/$name" -o "$RUNNER_TEMP/$name"
           done
           # The .sha256 files hold "<hash>  <filename>" or a bare hash; keep
           # only the hash either way.

@@ -1,0 +1,102 @@
+name: Smoke test the release
+
+# Last step of release.yml (wired in through post-announce-jobs in
+# dist-workspace.toml). The release is published at this point; this job
+# installs it through the public channels exactly as a user would and fails
+# loudly if what shipped doesn't install or reports the wrong version.
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Install the published release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Resolve the version
+        id: version
+        shell: bash
+        env:
+          PLAN: ${{ inputs.plan }}
+        run: |
+          version="$(echo "$PLAN" | jq -r '.releases[0].app_version // empty')"
+          if [[ -z "$version" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ -z "$version" ]]; then
+            echo "No version could be resolved from the plan or the ref."
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install through install-cli.sh and check the version
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          sh ./install-cli.sh --version "$VERSION" --bin-dir "$RUNNER_TEMP/bin"
+          got="$("$RUNNER_TEMP/bin/shed" version)"
+          if [[ "$got" != "$VERSION" ]]; then
+            echo "installed shed reports '$got', expected '$VERSION'"
+            exit 1
+          fi
+          echo "shed $got installs cleanly from the public release"
+
+      - name: Published checksums must match the artifacts
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          base="https://github.com/shed-sh/cli/releases/download/v$VERSION"
+          artifact="shed-x86_64-unknown-linux-gnu.tar.xz"
+          fetch() { curl --proto '=https' --proto-redir '=https' -fsSL "$1" -o "$2"; }
+          fetch "$base/$artifact" "$RUNNER_TEMP/$artifact"
+          fetch "$base/$artifact.sha256" "$RUNNER_TEMP/$artifact.sha256"
+          want="$(awk '{print $1}' "$RUNNER_TEMP/$artifact.sha256")"
+          got="$(sha256sum "$RUNNER_TEMP/$artifact" | awk '{print $1}')"
+          if [[ "$want" != "$got" ]]; then
+            echo "published sha256 does not match $artifact: want $want, got $got"
+            exit 1
+          fi
+          echo "$artifact matches its published sha256"
+          fetch "$base/shed-installer.sh" "$RUNNER_TEMP/shed-installer.sh"
+          if ! grep -Eq '_checksum_value="[0-9a-f]{16,}"' "$RUNNER_TEMP/shed-installer.sh"; then
+            echo "::warning title=Installer skips checksum verification::shed-installer.sh for v$VERSION has no embedded artifact digests, so it installs whatever the download host serves. Fix the dist pipeline so _checksum_value is populated."
+          fi
+
+      # npm publish finished before announce, but the registry can lag a
+      # little behind the publish call.
+      - name: Install through npm and check the version
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          ok=""
+          for attempt in $(seq 1 10); do
+            if npm install --prefix "$RUNNER_TEMP/npm" "@shed-sh/shed@$VERSION"; then
+              ok=1
+              break
+            fi
+            echo "@shed-sh/shed@$VERSION not visible yet (attempt $attempt); retrying in 15s"
+            sleep 15
+          done
+          if [[ -z "$ok" ]]; then
+            echo "the npm package never became installable"
+            exit 1
+          fi
+          got="$("$RUNNER_TEMP/npm/node_modules/.bin/shed" version)"
+          if [[ "$got" != "$VERSION" ]]; then
+            echo "npm-installed shed reports '$got', expected '$VERSION'"
+            exit 1
+          fi
+          echo "shed $got installs cleanly from npm"

@@ -29,7 +29,15 @@ npm-scope = "@shed-sh"
 # The tap the Homebrew formula is written to. Matches what goreleaser used, so
 # `brew install shed-sh/tap/shed` keeps working.
 tap = "shed-sh/homebrew-tap"
-publish-jobs = ["homebrew", "npm"]
+
+# One pipeline publishes every channel in the support matrix: the GitHub
+# Release (which the curl installers read), Homebrew, npm, and AUR. The
+# ./release-aur entry is .github/workflows/release-aur.yml, called by the
+# generated workflow after the release assets are live, so it never has to
+# poll for checksums. release-smoke runs last and installs the published
+# release the way a user would.
+publish-jobs = ["homebrew", "npm", "./release-aur"]
+post-announce-jobs = ["./release-smoke"]
 
 # Without this dist would install to $CARGO_HOME/bin, which is its Rust
 # default and means nothing for a Go binary. This is the same precedence uv
