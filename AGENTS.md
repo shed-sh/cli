@@ -29,6 +29,8 @@ Run Task commands from the repository root:
 task build                         # build the local CLI
 task test                          # run all package tests
 task test -- ./internal/source     # run one package's tests
+task test-e2e                      # CLI subprocess golden-path tests
+task test-e2e-docker               # source-to-running-container (needs Docker)
 task format                        # format Go source files
 task generate                      # regenerate the documentation set from its registries
 task generate-check                # fail if any generated documentation is stale
@@ -139,6 +141,19 @@ Prefer the standard library unless a dependency clearly simplifies the implement
 ## Testing Guidelines
 
 Use Go's `testing` package. Name tests `Test<Behavior>`, for example `TestAssembleRejectsSymlinkOutsideProject`. Build isolated fixtures with `t.TempDir()` and helper functions marked with `t.Helper()`. Add regression tests for ignore-rule precedence, archive contents, argument normalization, and security boundaries. Run `task check` before submitting changes; no numeric coverage threshold is currently configured.
+
+### Testing pyramid
+
+1. **Unit tests** on leaf packages (`internal/source`, `internal/shedfile`, `internal/definition`, `internal/clispec`, …) — archive rules, schema, argument binding, and other pure logic.
+2. **Integration tests** on `internal/cli` — the default place for command behavior. They call `App.Run` with buffers, not a subprocess. Put parsing, output shaping, error mapping, and flag matrices here.
+3. **E2E tests** in `internal/e2e` — a small golden-path surface only. They spawn the real `shed` binary with an isolated `HOME`:
+   - CLI subprocess tests (always): help/schema contract, `init` → `check` → `deploy --dry-run` / `--mock`, and install-script usage.
+   - Detection tests against the pinned repositories in `testdata/e2e/repos`.
+   - Docker tests (opt-in, `SHED_E2E_DOCKER=1` / `task test-e2e-docker`): source to a running HTTP server, including through the real CLI.
+
+Treat e2e coverage as scarce. If an assertion can be expressed faithfully by calling `App.Run`, it belongs in `internal/cli`, not here. Do not use e2e for help-text wording, flag tables, diagnostic copy, or schema rendering unless the subprocess boundary itself is what is being validated.
+
+Tests must stay correct under package-level parallelism and slow CI. Synchronize on observable conditions — never `time.Sleep` for startup, readiness, or cleanup. Subprocess failures must include stdout and stderr. Cleanup must target only owned containers, images, paths, and temp homes.
 
 ## Commit & Pull Request Guidelines
 

@@ -70,6 +70,11 @@ tasks:
     cmds:
       - go test -count=1 ./...
 
+  test-e2e:
+    desc: Run CLI subprocess golden-path tests (no Docker)
+    cmds:
+      - go test -count=1 -timeout=3m ./internal/e2e -run 'TestCLI|TestInstall' -v
+
   test-e2e-docker:
     desc: Build, run, update, verify, and remove the Docker E2E fixture
     env:
