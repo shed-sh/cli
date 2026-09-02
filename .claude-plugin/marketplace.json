@@ -1,0 +1,23 @@
+{
+  "name": "shed",
+  "owner": {
+    "name": "Shed",
+    "url": "https://github.com/shed-sh"
+  },
+  "description": "The shed CLI and its agent skill.",
+  "plugins": [
+    {
+      "name": "shed",
+      "source": "./",
+      "description": "Use the shed CLI: write SHED.yaml, package and deploy an app, and read shed's structured errors.",
+      "homepage": "https://github.com/shed-sh/cli",
+      "repository": "https://github.com/shed-sh/cli",
+      "keywords": [
+        "shed",
+        "deploy",
+        "cli",
+        "docker"
+      ]
+    }
+  ]
+}

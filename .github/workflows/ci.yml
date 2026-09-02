@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.3"
+          cache: true
+
+      - name: Download modules
+        shell: bash
+        run: |
+          go mod download
+          (cd third_party/railpack && go mod download)
+
+      - name: Check Go formatting
+        shell: bash
+        run: |
+          unformatted="$(git ls-files '*.go' | xargs gofmt -l)"
+          if [[ -n "$unformatted" ]]; then
+            echo "Run gofmt on:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Check the generated skill is current
+        run: go run ./cmd/shed-docs -check
+
+      - name: Run Go linter
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12
+          args: --timeout=5m
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          go test -count=1 ./...
+          (cd third_party/railpack && GOPROXY=off go test -count=1 ./...)
+
+      - name: Run source-to-Docker end-to-end test
+        env:
+          SHED_E2E_DOCKER: "1"
+        run: go test -count=1 -timeout=8m ./internal/e2e -run DockerEndToEnd -v
+
+      - name: Run static checks
+        shell: bash
+        run: |
+          go vet ./...
+          (cd third_party/railpack && go vet ./...)
+
+      - name: Build Linux CLI
+        run: >-
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64
+          go build -o "$RUNNER_TEMP/shed" ./cmd/shed

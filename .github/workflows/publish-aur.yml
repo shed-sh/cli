@@ -1,0 +1,136 @@
+name: Publish AUR package
+
+# Renders .github/aur/*.tmpl with the release's version and checksums and
+# pushes them to the shed-bin AUR repository, so `paru -S shed-bin` installs
+# the same artifacts every other channel ships.
+#
+# Needs an AUR_SSH_PRIVATE_KEY secret: an SSH key registered to an
+# aur.archlinux.org account that owns the shed-bin package base. Without the
+# secret the workflow succeeds as a no-op, so AUR publishing can be adopted by
+# adding the secret rather than by editing this file.
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish (defaults to the pushed tag)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  aur:
+    name: Push shed-bin to AUR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Resolve the version
+        id: version
+        shell: bash
+        run: |
+          version="${{ github.event.inputs.version }}"
+          if [[ -z "$version" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME}"
+          fi
+          version="${version#v}"
+          if [[ -z "$version" ]]; then
+            echo "No version could be resolved from the pushed tag or input."
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check for AUR credentials
+        id: creds
+        shell: bash
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$AUR_SSH_PRIVATE_KEY" ]]; then
+            echo "AUR_SSH_PRIVATE_KEY is not configured; skipping the AUR publish."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # dist uploads the release assets from a parallel workflow, so the
+      # checksums may not exist yet — retry until the release is live.
+      - name: Fetch the release checksums
+        if: steps.creds.outputs.present == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          base="https://github.com/shed-sh/cli/releases/download/v${VERSION}"
+          for name in shed-x86_64-unknown-linux-gnu.tar.xz.sha256 shed-aarch64-unknown-linux-gnu.tar.xz.sha256; do
+            ok=""
+            for attempt in $(seq 1 20); do
+              if curl -fsSL "$base/$name" -o "$RUNNER_TEMP/$name"; then
+                ok=1
+                break
+              fi
+              echo "$name not published yet (attempt $attempt); retrying in 30s"
+              sleep 30
+            done
+            if [[ -z "$ok" ]]; then
+              echo "the release checksum $name never appeared"
+              exit 1
+            fi
+          done
+          # The .sha256 files hold "<hash>  <filename>" or a bare hash; keep
+          # only the hash either way.
+          awk '{print $1}' "$RUNNER_TEMP/shed-x86_64-unknown-linux-gnu.tar.xz.sha256" > "$RUNNER_TEMP/sha-x86_64"
+          awk '{print $1}' "$RUNNER_TEMP/shed-aarch64-unknown-linux-gnu.tar.xz.sha256" > "$RUNNER_TEMP/sha-aarch64"
+
+      - name: Render the package files
+        if: steps.creds.outputs.present == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          sha_x86_64="$(cat "$RUNNER_TEMP/sha-x86_64")"
+          sha_aarch64="$(cat "$RUNNER_TEMP/sha-aarch64")"
+          mkdir -p "$RUNNER_TEMP/aur"
+          for pair in "PKGBUILD.tmpl:PKGBUILD" "SRCINFO.tmpl:.SRCINFO"; do
+            src=".github/aur/${pair%%:*}"
+            dst="$RUNNER_TEMP/aur/${pair##*:}"
+            sed -e "s/@VERSION@/${VERSION}/g" \
+                -e "s/@SHA256_X86_64@/${sha_x86_64}/g" \
+                -e "s/@SHA256_AARCH64@/${sha_aarch64}/g" \
+                "$src" > "$dst"
+          done
+          if grep -rn '@[A-Z0-9_]*@' "$RUNNER_TEMP/aur"; then
+            echo "a template placeholder was left unfilled"
+            exit 1
+          fi
+
+      - name: Push to AUR
+        if: steps.creds.outputs.present == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan -t ed25519,rsa aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o UserKnownHostsFile=~/.ssh/known_hosts"
+
+          git clone "ssh://aur@aur.archlinux.org/shed-bin.git" "$RUNNER_TEMP/shed-bin"
+          cp "$RUNNER_TEMP/aur/PKGBUILD" "$RUNNER_TEMP/aur/.SRCINFO" "$RUNNER_TEMP/shed-bin/"
+          cd "$RUNNER_TEMP/shed-bin"
+          git config user.name "shed-bot"
+          git config user.email "noreply@shed.run"
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "the AUR package already matches v${VERSION}; nothing to push"
+            exit 0
+          fi
+          git commit -m "Update to v${VERSION}"
+          git push origin master

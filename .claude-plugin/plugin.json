@@ -1,0 +1,11 @@
+{
+  "name": "shed",
+  "description": "Use the shed CLI: write SHED.yaml, package and deploy an app, and read shed's structured errors.",
+  "author": {
+    "name": "Shed",
+    "url": "https://github.com/shed-sh"
+  },
+  "repository": "https://github.com/shed-sh/cli",
+  "keywords": ["shed", "deploy", "cli", "docker", "railpack"],
+  "skills": "./skills/"
+}
