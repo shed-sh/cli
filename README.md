@@ -14,11 +14,6 @@ Docs live at [shed.codes](https://shed.codes).
 
 There are two pieces: the **`shed` CLI** and the **agent skill** that teaches coding agents (Claude Code, Cursor, Codex) to drive it. Every cell works on its own; pick your column.
 
-|  | curl | npm | bun | brew | paru (AUR) |
-|---|---|---|---|---|---|
-| **Both** | `curl -fsSL shed.codes/install.sh \| sh` | `npm i -g @shed-sh/shed` + the skill script | `bun add -g @shed-sh/shed` + the skill script | — | — |
-| **CLI only** | `curl -fsSL shed.codes/install-cli.sh \| sh` | `npm i -g @shed-sh/shed` | `bun add -g @shed-sh/shed` | `brew install shed-sh/tap/shed` | `paru -S shed-bin` |
-| **Skill only** | `curl -fsSL shed.codes/install-skills.sh \| sh` | — | — | — | — |
 
 The binary lands in `~/.local/bin` (override with `--bin-dir <dir>`; pin with `--version <v>`). The skill script clones one canonical copy into `~/.shed/skills` and symlinks it into every agent on the machine. Git is its only requirement, and rerunning it updates all agents at once. In a project, `npm i -D @shed-sh/shed` pins the CLI per repository.
 
