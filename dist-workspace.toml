@@ -34,6 +34,10 @@ npm-scope = "@shed-sh"
 publish-jobs = ["npm", "./release-skills-npm"]
 post-announce-jobs = ["./release-smoke"]
 
+# Custom publish jobs default to contents: none. The skills npm job checks
+# out this repository to pack skills/shed, so it needs contents: read.
+github-custom-job-permissions = { "release-skills-npm" = { contents = "read", packages = "write", "id-token" = "write" } }
+
 # Without this dist would install to $CARGO_HOME/bin, which is its Rust
 # default and means nothing for a Go binary. This is the same precedence uv
 # uses, and it keeps ~/.local/bin as the fallback so anyone who installed with
