@@ -103,7 +103,7 @@ pipeline through `post-announce-jobs` in `dist-workspace.toml`, so it runs
 after the assets are live instead of racing the upload:
 
 - `release-smoke.yml` — installs the published release through
-  `install-cli.sh`, npm, and `npx @shed-sh/shed`, verifies the published
+  `install.sh`, npm, and `npx @shed-sh/shed`, verifies the published
   `.sha256` matches its artifact, and fails unless the binary reports the
   tagged version.
 
@@ -112,10 +112,11 @@ Never edit `release.yml` by hand; change `dist-workspace.toml` and run
 hand-edit fails the next tag.
 
 The install scripts at the repository root are served at shed.codes and fetch
-from this repository's releases. `install-cli.sh` delegates to each release's
+from this repository's releases. `install.sh` delegates to each release's
 own `shed-installer.sh`, so asset naming lives in exactly one place.
 
-`install.sh` installs only the CLI. `install-skills.sh --global` (the default)
+There are exactly two, one per thing, and neither installs the other:
+`install.sh` installs the CLI. `install-skills.sh --global` (the default)
 clones this repository into `~/.shed/skills` and symlinks `skills/shed` into
 each coding agent found on the machine. `install-skills.sh --local` copies
 the skill into the current project's `.claude/skills/shed`. git is the only

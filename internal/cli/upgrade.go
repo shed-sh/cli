@@ -182,7 +182,7 @@ func packageManagerUpgrade(manager string) string {
 }
 
 // latestReleaseVersion reads the version out of the /releases/latest redirect,
-// the same way install-cli.sh resolves it: no API, no token, no rate limit.
+// the same way install.sh resolves it: no API, no token, no rate limit.
 func latestReleaseVersion(ctx context.Context, base string) (string, error) {
 	client := &http.Client{
 		Timeout: 30 * time.Second,

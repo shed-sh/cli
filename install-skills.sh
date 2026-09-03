@@ -1,5 +1,7 @@
 #!/bin/sh
-# Install the shed agent skill, globally or into this project.
+# Install the shed agent skill, globally or into this project. Nothing else —
+# the CLI is a separate install, install.sh, so neither install can surprise
+# you with the other.
 #
 #   curl -fsSL https://raw.githubusercontent.com/shed-sh/cli/main/install-skills.sh | sh
 #   curl -fsSL https://raw.githubusercontent.com/shed-sh/cli/main/install-skills.sh | sh -s -- --local
@@ -31,6 +33,8 @@ Usage: install-skills.sh [--global | --local] [--dir <path>]
   -h, --help Show this message
 
 Environment: SHED_HOME (default ~/.shed), SHED_SKILLS_REPO
+
+The CLI installs separately: install.sh
 EOF
 }
 

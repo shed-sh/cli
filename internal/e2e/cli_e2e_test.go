@@ -125,7 +125,9 @@ func TestInstallScriptsPrintUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"install.sh", "install-cli.sh", "install-skills.sh", "install-all.sh"} {
+	// One installer per thing, and no third one that installs both: a reader
+	// who wants the CLI must not have to find out what else a script does.
+	for _, name := range []string{"install.sh", "install-skills.sh"} {
 		t.Run(name, func(t *testing.T) {
 			cmd := exec.Command("sh", filepath.Join(root, name), "--help")
 			output, err := cmd.CombinedOutput()
@@ -146,6 +148,26 @@ func TestInstallScriptsPrintUsage(t *testing.T) {
 	for _, want := range []string{"--global", "--local", "This project"} {
 		if !strings.Contains(string(skillsHelp), want) {
 			t.Fatalf("install-skills.sh --help missing %q:\n%s", want, skillsHelp)
+		}
+	}
+
+	// Each installer says where the other one is, so neither reads as the
+	// whole story.
+	cliHelp, err := exec.Command("sh", filepath.Join(root, "install.sh"), "--help").CombinedOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(cliHelp), "install-skills.sh") {
+		t.Fatalf("install.sh --help never mentions the skill installer:\n%s", cliHelp)
+	}
+	if !strings.Contains(string(skillsHelp), "install.sh") {
+		t.Fatalf("install-skills.sh --help never mentions the CLI installer:\n%s", skillsHelp)
+	}
+
+	// The combined installer is gone; nothing may quietly bring it back.
+	for _, gone := range []string{"install-cli.sh", "install-all.sh"} {
+		if _, err := os.Stat(filepath.Join(root, gone)); !os.IsNotExist(err) {
+			t.Fatalf("%s is back: one installer per thing, and no combined one", gone)
 		}
 	}
 }

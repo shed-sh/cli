@@ -39,12 +39,12 @@ jobs:
           fi
           echo "value=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Install through install-cli.sh and check the version
+      - name: Install through install.sh and check the version
         shell: bash
         env:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
-          sh ./install-cli.sh --version "$VERSION" --bin-dir "$RUNNER_TEMP/bin"
+          sh ./install.sh --version "$VERSION" --bin-dir "$RUNNER_TEMP/bin"
           got="$("$RUNNER_TEMP/bin/shed" version)"
           if [[ "$got" != "$VERSION" ]]; then
             echo "installed shed reports '$got', expected '$VERSION'"
