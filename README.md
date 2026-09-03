@@ -4,56 +4,44 @@
 [![Release](https://img.shields.io/github/v/release/shed-sh/cli?display_name=tag&sort=semver)](https://github.com/shed-sh/cli/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Deploy small software from your terminal. One file describes the app, and `shed deploy` packages it into a deterministic archive, builds it on the Shed cloud, and hands back a live URL. Nothing but the CLI needs to be installed.
+Deploy small software from your terminal. `shed deploy` builds your app on the Shed cloud and hands back a live URL. The CLI is the only thing you install.
 
 Shed is **agent-first**: it never prompts (except `shed login`), every command speaks `--output json`, and errors come back with stable codes and concrete next steps. It works the same from your terminal, from CI, and from a coding agent's shell.
 
 Docs live at [shed.codes](https://shed.codes).
 
-## Installation
+## Install
 
 ```sh
-# shed
 curl -fsSL https://raw.githubusercontent.com/shed-sh/cli/main/install.sh | sh
 npx @shed-sh/shed
-
-# skill, this machine
-curl -fsSL https://raw.githubusercontent.com/shed-sh/cli/main/install-skills.sh | sh
-npx @shed-sh/skills
-
-# skill, this project
-curl -fsSL https://raw.githubusercontent.com/shed-sh/cli/main/install-skills.sh | sh -s -- --local
-npx @shed-sh/skills --local
 ```
 
-`install.sh` / `npx @shed-sh/shed` only install the CLI (override the destination with `--bin-dir <dir>`; pin with `--version <v>`). `npm install -g @shed-sh/shed` puts `shed` on PATH. Update any time with `shed upgrade`.
+`npm install -g @shed-sh/shed` puts `shed` on PATH. The installer takes `--bin-dir <dir>` and `--version <v>`. Update with `shed upgrade`.
 
-The skill is a separate package. `--global` (the default) copies one copy into `~/.shed/skills` and symlinks it into every coding agent on the machine. `--local` copies it into this project's `.claude/skills/shed`, so the skill travels with the repo. The same scripts are served at [shed.codes](https://shed.codes).
-
-## Start a project
+## Deploy
 
 ```sh
 cd your-app
 shed login         # opens a browser; the one interactive command
-shed init          # reads the project, writes SHED.hcl
 shed deploy .      # builds on Shed, hands back a live URL
 ```
 
-`shed deploy` works from one definition. If `SHED.hcl` (or a Starlark `SHED`) is in the directory, it is used exactly as written and never regenerated. If neither is there, Shed detects the software — Node.js, Next.js, or a Go module — writes `SHED.hcl` (the same file `shed init` writes) and carries on, so the next deploy reads it and you have something to read, edit, and commit. `--dry-run` only looks and writes nothing. Either way the archive Shed ships carries the definition, and that archive is what gets built and run.
+Deploy works from one file, `SHED.hcl`. If it is there, Shed uses it as written. If it is not, Shed looks at your project — Node.js, Next.js, or a Go module — writes one, and carries on, so you have something to read and edit. `shed init` writes it without deploying; `shed deploy --dry-run` writes nothing at all.
 
-Follow a long build with `shed status <deployment> --wait`. Fetch logs with `shed logs <deployment>`.
+Follow a long build with `shed status <deployment> --wait`, and read its output with `shed logs <deployment>`.
 
-## Run it on this machine instead
+## Run it here instead
 
 ```sh
-shed deploy . --local     # builds an image and starts one container (needs Docker)
+shed deploy . --local
 ```
 
-This is optional. The local run packages the same deterministic archive, builds it in Docker, and starts one container; on success Shed prints a URL and an instance id. `shed stop <instance>` stops it. Without Docker, `shed deploy . --mock` still packages the project so you can see what would ship.
+Optional, and needs Docker: this builds an image on your machine and starts one container. `shed stop <instance>` stops it.
 
-## Author the definition
+## The definition
 
-Everything Shed builds comes from `SHED.hcl` (or its Starlark form, `SHED`). It is one `application` block: what to ship, how to build it, how to run it. Nothing on your machine leaks into the build, so a deploy that works on your laptop behaves the same anywhere else.
+`SHED.hcl` is one `application` block — what to ship, how to build it, how to run it. Only what it names is sent, so a deploy behaves the same from your laptop, from CI, or from a teammate's machine.
 
 ```hcl
 application "my-app" {
@@ -73,67 +61,38 @@ application "my-app" {
 }
 ```
 
-While authoring, ask shed instead of guessing:
+`shed check` reports every problem in it at once, and `shed schema` prints the full API. There is also a Starlark form, `SHED`, for people who would rather write a program than a document: `shed init --format shed`.
+
+## For coding agents
+
+The [skill](skills/shed) teaches an agent to write a definition, deploy, and read Shed's errors. It follows the [Agent Skills](https://skills.sh) specification.
 
 ```sh
-shed check                                    # every problem at once
-shed schema                                   # the SHED file API
-shed deploy . --dry-run --archive app.tar.gz  # inspect what would ship
+curl -fsSL https://raw.githubusercontent.com/shed-sh/cli/main/install-skills.sh | sh            # this machine
+curl -fsSL https://raw.githubusercontent.com/shed-sh/cli/main/install-skills.sh | sh -s -- --local  # this project
+npx @shed-sh/skills
 ```
 
-## The agent skill
-
-The skill in [`skills/shed`](skills/shed) teaches an agent to write a clean `SHED.hcl` or Starlark `SHED`, deploy, read shed's structured errors, and debug ignore rules. It follows the [Agent Skills](https://skills.sh) specification. Install it for this machine or this project (see Installation). Claude Code users can also install it as a plugin:
+Claude Code can install it as a plugin instead:
 
 ```
 /plugin marketplace add shed-sh/cli
 /plugin install shed@shed
 ```
 
-For agents without the skill, [`llms-full.txt`](llms-full.txt) is the entire documentation set as one file of model context.
+For an agent without the skill, [`llms-full.txt`](llms-full.txt) is the whole documentation set in one file.
 
-## Reference
+## Help
 
-Use `--help` on any command to explore flags and examples:
+`shed help`, `shed <command> --help`, and `shed help --output json` all come from the binary in front of you. If a document ever disagrees with them, the binary is right.
 
-```sh
-shed help
-shed deploy --help
-shed help --output json
-```
+## Contributing
 
-`shed help --output json` comes from the binary in front of you; if it and any document ever disagree, the binary is right.
-
-## What's in this repository
-
-| Path | What it is |
-|---|---|
-| `cmd/shed` | The CLI entry point. |
-| `internal/` | Packaging, build, deploy, auth, and the SHED evaluators. |
-| `internal/e2e` | Golden-path tests that spawn the real `shed` binary. |
-| `skills/shed` | The agent skill and its references (partly generated; see below). |
-| `packages/skills` | The `@shed-sh/skills` npm package (`npx @shed-sh/skills`). |
-| `install.sh`, `install-cli.sh`, `install-skills.sh` | The install scripts served at shed.codes and via GitHub raw. |
-| `docs/` | Design and protocol documentation. |
-| `third_party/railpack` | Vendored [Railpack](https://github.com/railwayapp/railpack) (its own MIT license), which powers project detection. |
-| [Releases](https://github.com/shed-sh/cli/releases) | Binaries, installers, and checksums per version. |
-
-## Developing
-
-Go 1.26+, [Task](https://taskfile.dev), and Docker for `--local` deploys and their e2e tests.
-
-```sh
-task build            # build the CLI
-task test             # unit, integration, and CLI e2e (no Docker)
-task test-e2e-docker  # source-to-running-container, needs Docker
-task check            # the full local CI suite
-```
-
-Parts of the documentation are generated from the CLI's own registries (`task generate`), so a reference can never describe a flag or builtin the binary lacks; CI fails when they drift. `AGENTS.md` carries the contributor guide.
+Go 1.26+, [Task](https://taskfile.dev), and Docker for `--local` deploys and their tests. `task check` runs the full CI suite. [`AGENTS.md`](AGENTS.md) is the contributor guide.
 
 ## Security
 
-Shed treats the project it deploys the way `make` treats a Makefile: the build steps the manifest declares will run, and they should be the only thing the project can make happen. Packaging refuses symlinks, the Starlark evaluator has no filesystem or network access, and archives are validated as they are extracted. Report vulnerabilities privately via [SECURITY.md](SECURITY.md).
+Shed runs the build steps your definition declares, the way `make` runs a Makefile — and nothing else. Report vulnerabilities privately via [SECURITY.md](SECURITY.md).
 
 ## License
 
