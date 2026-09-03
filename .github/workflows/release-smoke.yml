@@ -81,17 +81,21 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
+          # npm accepts the publish before the version is servable from every
+          # CDN edge. v0.2.0 took longer than the old 2.5-minute budget and
+          # failed the release for a lag that had cleared minutes later, so
+          # wait 10 minutes before calling it a real failure.
           ok=""
-          for attempt in $(seq 1 10); do
+          for attempt in $(seq 1 40); do
             if npm install --prefix "$RUNNER_TEMP/npm" "@shed-sh/shed@$VERSION"; then
               ok=1
               break
             fi
-            echo "@shed-sh/shed@$VERSION not visible yet (attempt $attempt); retrying in 15s"
+            echo "@shed-sh/shed@$VERSION not visible yet (attempt $attempt of 40); retrying in 15s"
             sleep 15
           done
           if [[ -z "$ok" ]]; then
-            echo "the npm package never became installable"
+            echo "the npm package never became installable after 10 minutes"
             exit 1
           fi
           got="$("$RUNNER_TEMP/npm/node_modules/.bin/shed" version)"
