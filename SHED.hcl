@@ -2,8 +2,6 @@ application "shed" {
   content {
     include = [
       ".github",
-      ".gitmodules",
-      ".goreleaser.yaml",
       "AGENTS.md",
       "README.md",
       "Taskfile.yml",
