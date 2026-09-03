@@ -100,3 +100,29 @@ jobs:
             exit 1
           fi
           echo "shed $got installs cleanly from npm"
+
+      - name: Run through npx and check the version
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          got="$(npx --yes "@shed-sh/shed@$VERSION" version)"
+          if [[ "$got" != "$VERSION" ]]; then
+            echo "npx @shed-sh/shed reports '$got', expected '$VERSION'"
+            exit 1
+          fi
+          echo "shed $got runs cleanly through npx"
+
+      - name: Install the skill through npx
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          project="$RUNNER_TEMP/skill-project"
+          mkdir -p "$project"
+          npx --yes "@shed-sh/skills@$VERSION" --local --dir "$project"
+          if [[ ! -f "$project/.claude/skills/shed/SKILL.md" ]]; then
+            echo "npx @shed-sh/skills --local did not write SKILL.md"
+            exit 1
+          fi
+          echo "npx @shed-sh/skills@$VERSION installs the skill into a project"

@@ -1,0 +1,22 @@
+{
+  "name": "@shed-sh/skills",
+  "version": "0.1.0",
+  "description": "Install the shed agent skill for Claude Code, Cursor, and Codex",
+  "license": "MIT",
+  "homepage": "https://shed.codes",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shed-sh/cli.git",
+    "directory": "packages/skills"
+  },
+  "bin": {
+    "shed-skills": "./install.js"
+  },
+  "files": [
+    "install.js",
+    "skill"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

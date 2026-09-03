@@ -138,4 +138,83 @@ func TestInstallScriptsPrintUsage(t *testing.T) {
 			}
 		})
 	}
+
+	skillsHelp, err := exec.Command("sh", filepath.Join(root, "install-skills.sh"), "--help").CombinedOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"--global", "--local", "This project"} {
+		if !strings.Contains(string(skillsHelp), want) {
+			t.Fatalf("install-skills.sh --help missing %q:\n%s", want, skillsHelp)
+		}
+	}
+}
+
+func TestInstallSkillsLocalCopiesIntoTheProject(t *testing.T) {
+	root, err := callerRepositoryRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(project, ".cursor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", filepath.Join(root, "install-skills.sh"), "--local", "--dir", project)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("install-skills.sh --local: %v\n%s", err, output)
+	}
+	for _, rel := range []string{
+		filepath.Join(".claude", "skills", "shed", "SKILL.md"),
+		filepath.Join(".cursor", "skills", "shed", "SKILL.md"),
+	} {
+		if _, statErr := os.Stat(filepath.Join(project, rel)); statErr != nil {
+			t.Fatalf("missing %s: %v\n%s", rel, statErr, output)
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(project, ".codex", "skills", "shed")); !os.IsNotExist(statErr) {
+		t.Fatalf("copied into .codex without a .codex directory: %v", statErr)
+	}
+}
+
+func TestNpmSkillsLocalCopiesIntoTheProject(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node is required to run the skills npm installer")
+	}
+	root, err := callerRepositoryRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(project, ".cursor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("node", filepath.Join(root, "packages", "skills", "install.js"), "--local", "--dir", project)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("npx skills --local: %v\n%s", err, output)
+	}
+	for _, rel := range []string{
+		filepath.Join(".claude", "skills", "shed", "SKILL.md"),
+		filepath.Join(".cursor", "skills", "shed", "SKILL.md"),
+	} {
+		if _, statErr := os.Stat(filepath.Join(project, rel)); statErr != nil {
+			t.Fatalf("missing %s: %v\n%s", rel, statErr, output)
+		}
+	}
+}
+
+func TestInstallSkillsDirRequiresLocal(t *testing.T) {
+	root, err := callerRepositoryRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", filepath.Join(root, "install-skills.sh"), "--dir", t.TempDir())
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected failure, got:\n%s", output)
+	}
+	if !strings.Contains(string(output), "--dir is only valid with --local") {
+		t.Fatalf("stderr = %q", output)
+	}
 }

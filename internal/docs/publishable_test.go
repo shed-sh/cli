@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -88,4 +89,40 @@ func TestSkillHasFrontmatter(t *testing.T) {
 			t.Errorf("SKILL.md frontmatter has no %s", field)
 		}
 	}
+}
+
+func TestSkillsNpmVersionMatchesRelease(t *testing.T) {
+	root := filepath.Join("..", "..")
+	workspace, err := os.ReadFile(filepath.Join(root, "dist-workspace.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkgJSON, err := os.ReadFile(filepath.Join(root, "packages", "skills", "package.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	distVersion := firstTOMLVersion(string(workspace))
+	var pkg struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(pkgJSON, &pkg); err != nil {
+		t.Fatal(err)
+	}
+	if pkg.Name != "@shed-sh/skills" {
+		t.Fatalf("skills package name = %q", pkg.Name)
+	}
+	if pkg.Version != distVersion {
+		t.Fatalf("packages/skills version = %q, dist-workspace.toml version = %q", pkg.Version, distVersion)
+	}
+}
+
+func firstTOMLVersion(content string) string {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "version = \"") && strings.HasSuffix(line, "\"") {
+			return strings.Trim(line[len("version = "):], "\"")
+		}
+	}
+	return ""
 }

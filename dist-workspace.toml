@@ -4,8 +4,8 @@ members = ["dist:."]
 [package]
 name = "shed"
 version = "0.1.0"
-# dist bakes this URL into the shell installer and the Homebrew formula as
-# the download location, so it must stay the repository releases land in.
+# dist bakes this URL into the shell installer as the download location,
+# so it must stay the repository releases land in.
 repository = "https://github.com/shed-sh/cli"
 description = "CLI for deploying and sharing small software"
 homepage = "https://shed.codes"
@@ -19,24 +19,19 @@ cargo-dist-version = "0.32.0"
 # every release only bloats the asset list.
 source-tarball = false
 ci = ["github"]
-installers = ["shell", "homebrew", "npm"]
+installers = ["shell", "npm"]
 
 # Bare `shed` on npm belongs to someone else, so the package is scoped:
-# `npm install -g @shed-sh/shed` (bun reads the same registry). Publishing
-# needs an NPM_TOKEN secret for the shed-sh npm org.
+# `npx @shed-sh/shed` runs it, `npm install -g @shed-sh/shed` puts it on
+# PATH (bun reads the same registry). Publishing needs an NPM_TOKEN
+# secret for the shed-sh npm org.
 npm-scope = "@shed-sh"
 
-# The tap the Homebrew formula is written to. Matches what goreleaser used, so
-# `brew install shed-sh/tap/shed` keeps working.
-tap = "shed-sh/homebrew-tap"
-
-# One pipeline publishes every channel in the support matrix: the GitHub
-# Release (which the curl installers read), Homebrew, npm, and AUR. The
-# ./release-aur entry is .github/workflows/release-aur.yml, called by the
-# generated workflow after the release assets are live, so it never has to
-# poll for checksums. release-smoke runs last and installs the published
-# release the way a user would.
-publish-jobs = ["homebrew", "npm", "./release-aur"]
+# One pipeline publishes the GitHub Release (which the curl installers
+# read), the CLI npm package (`npx @shed-sh/shed`), and the skill npm
+# package (`npx @shed-sh/skills`). release-smoke runs last and installs
+# the published release the way a user would.
+publish-jobs = ["npm", "./release-skills-npm"]
 post-announce-jobs = ["./release-smoke"]
 
 # Without this dist would install to $CARGO_HOME/bin, which is its Rust

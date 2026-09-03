@@ -3,3 +3,5 @@
 # history — the release workflow regenerates target/distrib from scratch.
 /shed
 /target/
+/packages/skills/skill
+/packages/skills/LICENSE
