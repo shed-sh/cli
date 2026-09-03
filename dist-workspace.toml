@@ -3,7 +3,7 @@ members = ["dist:."]
 
 [package]
 name = "shed"
-version = "0.1.0"
+version = "0.2.0"
 # dist bakes this URL into the shell installer as the download location,
 # so it must stay the repository releases land in.
 repository = "https://github.com/shed-sh/cli"
