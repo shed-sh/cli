@@ -1,0 +1,11 @@
+# Extra steps dist injects into its build jobs (wired in through
+# github-build-setup in dist-workspace.toml). dist's generated jobs set up a
+# Rust toolchain because that is what dist was built around; nothing there
+# provides Go, so dist-build.sh cannot find `go` without this step.
+#
+# The version tracks go.mod, the same source ci.yml pins to, so the released
+# binary is built with the toolchain the tests ran under.
+- name: Set up Go
+  uses: actions/setup-go@v5
+  with:
+    go-version-file: "go.mod"
