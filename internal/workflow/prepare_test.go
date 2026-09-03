@@ -198,6 +198,49 @@ http_app(
 	}
 }
 
+// A built binary named "shed" sits next to the definition in this very
+// repository. On a case-insensitive filesystem, opening "SHED" finds it, which
+// made every command in such a directory fail with definition_conflict. The
+// name has to match exactly, and a directory named SHED is not a definition
+// either.
+func TestOnlyAnExactlyNamedFileIsADefinition(t *testing.T) {
+	root := t.TempDir()
+	writeWorkflowFile(t, root, "main.py", "print('hello')\n")
+	writeWorkflowFile(t, root, "shed", "#!/bin/sh\necho not a definition\n")
+	manifest := definition.Manifest{
+		APIVersion: definition.ManifestAPIVersion,
+		Kind:       definition.ManifestKind,
+		Metadata:   &definition.ManifestMetadata{Name: "script"},
+		Content:    definition.ManifestContent{Include: []string{"main.py"}},
+		Build:      definition.ManifestBuild{Image: "python:3.13"},
+		Run:        definition.ManifestRun{Command: []string{"python", "main.py"}, Port: 8000},
+	}
+	data, err := manifest.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeWorkflowFile(t, root, definition.ManifestFileName, string(data))
+
+	resolved, err := ResolveDefinition(root, nil, "")
+	if err != nil {
+		t.Fatalf("a binary named shed was mistaken for a definition: %v", err)
+	}
+	if resolved.File != definition.ManifestFileName || resolved.Manifest.Build.Image != "python:3.13" {
+		t.Fatalf("resolved = %#v", resolved)
+	}
+
+	// A directory named SHED is not a definition either.
+	nested := t.TempDir()
+	writeWorkflowFile(t, nested, "main.py", "print('hello')\n")
+	writeWorkflowFile(t, nested, definition.ManifestFileName, string(data))
+	if err := os.Mkdir(filepath.Join(nested, shedfile.FileName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveDefinition(nested, nil, ""); err != nil {
+		t.Fatalf("a directory named SHED was mistaken for a definition: %v", err)
+	}
+}
+
 func TestTwoDefinitionsAreAConflict(t *testing.T) {
 	root := t.TempDir()
 	writeWorkflowFile(t, root, "go.mod", "module example.com/service\n\ngo 1.24\n")

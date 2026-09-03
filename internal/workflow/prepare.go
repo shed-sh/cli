@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -345,9 +344,6 @@ func firstLog(result *core.BuildResult) string {
 	return result.Logs[len(result.Logs)-1].Msg
 }
 
-// ResolveDefinition loads the authoritative definition when one is present —
-// the SHED program or the SHED.hcl manifest, never both. Detection is only
-// scaffolding for projects that do not have a definition yet.
 // ResolveDefinition finds the definition for root: the SHED program when
 // there is one, else SHED.hcl, else detection. An existing file is used as
 // written. writeFormat is "" to keep a detected definition in memory, or
@@ -410,19 +406,19 @@ func ResolveDefinition(root string, generator definition.DefinitionGenerator, wr
 // readDefinitionFiles reads whichever definition files exist and fails when
 // both do: two authoritative definitions cannot decide one build.
 func readDefinitionFiles(root string) (program, manifest []byte, err error) {
-	program, programErr := os.ReadFile(filepath.Join(root, shedfile.FileName))
-	if programErr != nil {
-		if !errors.Is(programErr, os.ErrNotExist) {
-			return nil, nil, fmt.Errorf("read %s: %w", shedfile.FileName, programErr)
-		}
-		program = nil
+	present, err := definitionFilesPresent(root)
+	if err != nil {
+		return nil, nil, err
 	}
-	manifest, manifestErr := os.ReadFile(filepath.Join(root, definition.ManifestFileName))
-	if manifestErr != nil {
-		if !errors.Is(manifestErr, os.ErrNotExist) {
-			return nil, nil, fmt.Errorf("read %s: %w", definition.ManifestFileName, manifestErr)
+	if present[shedfile.FileName] {
+		if program, err = os.ReadFile(filepath.Join(root, shedfile.FileName)); err != nil {
+			return nil, nil, fmt.Errorf("read %s: %w", shedfile.FileName, err)
 		}
-		manifest = nil
+	}
+	if present[definition.ManifestFileName] {
+		if manifest, err = os.ReadFile(filepath.Join(root, definition.ManifestFileName)); err != nil {
+			return nil, nil, fmt.Errorf("read %s: %w", definition.ManifestFileName, err)
+		}
 	}
 	if program != nil && manifest != nil {
 		return nil, nil, &diag.Error{
@@ -433,6 +429,34 @@ func readDefinitionFiles(root string) (program, manifest []byte, err error) {
 		}
 	}
 	return program, manifest, nil
+}
+
+// definitionFilesPresent reports which definition files the directory really
+// holds, matching the name exactly.
+//
+// Opening the path directly would be wrong on a case-insensitive filesystem —
+// macOS and Windows both have one by default. There, opening "SHED" also finds
+// a file named "shed", so a project that merely built a binary called shed
+// (this repository does) looked like it had a Starlark definition, and every
+// command failed with definition_conflict. Reading the directory gives the
+// names as they are actually spelled on disk, so only a real SHED counts.
+// Directories are skipped for the same reason: a SHED/ directory is not a
+// definition.
+func definitionFilesPresent(root string) (map[string]bool, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", root, err)
+	}
+	present := make(map[string]bool, 2)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if name := entry.Name(); name == shedfile.FileName || name == definition.ManifestFileName {
+			present[name] = true
+		}
+	}
+	return present, nil
 }
 
 // evaluateProgram runs the SHED program against the same collected file
