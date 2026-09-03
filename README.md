@@ -39,7 +39,7 @@ shed init          # reads the project, writes SHED.hcl
 shed deploy .      # builds on Shed, hands back a live URL
 ```
 
-`shed deploy` works from one definition. If `SHED.hcl` (or a Starlark `SHED`) is in the directory, it is used exactly as written and never regenerated. If neither is there, Shed detects the software — Node.js, Next.js, or a Go module — and generates the same definition in memory for that deploy alone; nothing is written to your project. `shed init` is how you keep one to read, edit, and commit. Either way the archive Shed ships carries the definition, and that archive is what gets built and run.
+`shed deploy` works from one definition. If `SHED.hcl` (or a Starlark `SHED`) is in the directory, it is used exactly as written and never regenerated. If neither is there, Shed detects the software — Node.js, Next.js, or a Go module — writes `SHED.hcl` (the same file `shed init` writes) and carries on, so the next deploy reads it and you have something to read, edit, and commit. `--dry-run` only looks and writes nothing. Either way the archive Shed ships carries the definition, and that archive is what gets built and run.
 
 Follow a long build with `shed status <deployment> --wait`. Fetch logs with `shed logs <deployment>`.
 

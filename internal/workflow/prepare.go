@@ -24,11 +24,19 @@ import (
 )
 
 type Options struct {
-	Root         string
-	Archive      string
-	RequestID    string
-	DryRun       bool
-	Mock         bool
+	Root      string
+	Archive   string
+	RequestID string
+	DryRun    bool
+	Mock      bool
+	// WriteDefinition asks Prepare to write SHED.hcl when the project has no
+	// definition and one had to be detected, so the next run reads the same
+	// file. Off, a detected definition lives only in this run.
+	WriteDefinition bool
+	// Definition is a definition resolved ahead of Prepare — so a caller can
+	// say what it is working from before anything else happens. Set, Prepare
+	// resolves nothing itself.
+	Definition   *ResolvedDefinition
 	Generator    definition.DefinitionGenerator
 	Deployer     deployment.Deployer
 	Builder      builder.Builder
@@ -81,6 +89,7 @@ type SourceResult struct {
 type Result struct {
 	Outcome       string                        `json:"outcome"`
 	RequestID     string                        `json:"requestId,omitempty"`
+	Definition    definition.Resolution         `json:"definition"`
 	Application   definition.Manifest           `json:"application"`
 	Source        SourceResult                  `json:"source"`
 	Deployment    *deployment.Deployment        `json:"deployment,omitempty"`
@@ -98,6 +107,30 @@ type Prepared struct {
 	// carries.
 	ManifestSource []byte
 	Archive        source.Archive
+	Definition     ResolvedDefinition
+}
+
+// ResolvedDefinition is a definition together with where it came from.
+type ResolvedDefinition struct {
+	definition.GeneratedDefinition
+	// File is the definition's file name under the project root: SHED, or
+	// SHED.hcl. For a detected definition that was not written, it names the
+	// file a deploy would write.
+	File string
+	// Created reports that this resolution wrote File, because none existed.
+	Created bool
+}
+
+// Resolution is the JSON-facing account of the resolution.
+func (resolved ResolvedDefinition) Resolution() definition.Resolution {
+	return definition.Resolution{Path: resolved.File, Created: resolved.Created, Provider: resolved.Provider}
+}
+
+// PackageSummary is the trailing note the "package" stage shows once done —
+// file count and compressed size, without the digests (which stay in the
+// JSON output for anyone who needs them).
+func PackageSummary(archive source.Archive) string {
+	return fmt.Sprintf("%d files, %s", archive.Content.FileCount, humanSize(archive.CompressedSize))
 }
 
 func (prepared Prepared) Close() error {
@@ -113,15 +146,23 @@ func Prepare(options Options) (Prepared, error) {
 	if err != nil {
 		return Prepared{}, fmt.Errorf("resolve application root: %w", err)
 	}
-	generated, err := ResolveDefinition(absoluteRoot, options.Generator)
-	if err != nil {
-		return Prepared{}, err
+	resolved := options.Definition
+	if resolved == nil {
+		writeFormat := ""
+		if options.WriteDefinition {
+			writeFormat = "hcl"
+		}
+		value, err := ResolveDefinition(absoluteRoot, options.Generator, writeFormat)
+		if err != nil {
+			return Prepared{}, err
+		}
+		resolved = &value
 	}
-	archive, err := source.Prepare(absoluteRoot, options.Archive, generated.Source, generated.Manifest.Content.Include...)
+	archive, err := source.Prepare(absoluteRoot, options.Archive, resolved.Source, resolved.Manifest.Content.Include...)
 	if err != nil {
 		return Prepared{}, fmt.Errorf("prepare source archive: %w", err)
 	}
-	return Prepared{Root: absoluteRoot, Manifest: generated.Manifest, ManifestSource: generated.Source, Archive: archive}, nil
+	return Prepared{Root: absoluteRoot, Manifest: resolved.Manifest, ManifestSource: resolved.Source, Archive: archive, Definition: *resolved}, nil
 }
 
 func Run(ctx context.Context, options Options) (Result, error) {
@@ -137,7 +178,7 @@ func Run(ctx context.Context, options Options) (Result, error) {
 	}
 	defer func() { _ = prepared.Close() }()
 	archive := prepared.Archive
-	report.StageDone("package", packageSummary(archive))
+	report.StageDone("package", PackageSummary(archive))
 
 	archivePath := ""
 	if !archive.Temporary {
@@ -146,6 +187,7 @@ func Run(ctx context.Context, options Options) (Result, error) {
 	result := Result{
 		Outcome:     "prepared",
 		RequestID:   options.RequestID,
+		Definition:  prepared.Definition.Resolution(),
 		Application: prepared.Manifest,
 		Source: SourceResult{
 			ContentDigest: archive.Content.Digest,
@@ -273,13 +315,6 @@ func runLocal(ctx context.Context, options Options, root string, manifest defini
 	return result, nil
 }
 
-// packageSummary is the trailing note the "package" stage shows once done —
-// file count and compressed size, without the digests (which stay in the JSON
-// output for anyone who needs them).
-func packageSummary(archive source.Archive) string {
-	return fmt.Sprintf("%d files, %s", archive.Content.FileCount, humanSize(archive.CompressedSize))
-}
-
 func humanSize(size int64) string {
 	const (
 		kib = 1024
@@ -313,26 +348,63 @@ func firstLog(result *core.BuildResult) string {
 // ResolveDefinition loads the authoritative definition when one is present —
 // the SHED program or the SHED.hcl manifest, never both. Detection is only
 // scaffolding for projects that do not have a definition yet.
-func ResolveDefinition(root string, generator definition.DefinitionGenerator) (definition.GeneratedDefinition, error) {
+// ResolveDefinition finds the definition for root: the SHED program when
+// there is one, else SHED.hcl, else detection. An existing file is used as
+// written. writeFormat is "" to keep a detected definition in memory, or
+// "hcl"/"shed" to write it into root in that format — what init and deploy
+// do, so the next run reads the same file instead of detecting again.
+func ResolveDefinition(root string, generator definition.DefinitionGenerator, writeFormat string) (ResolvedDefinition, error) {
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return ResolvedDefinition{}, fmt.Errorf("resolve application root: %w", err)
+	}
 	program, manifest, err := readDefinitionFiles(root)
 	if err != nil {
-		return definition.GeneratedDefinition{}, err
+		return ResolvedDefinition{}, err
 	}
 	if program != nil {
 		generated, diags := evaluateProgram(root, program)
 		if len(diags) > 0 {
-			return definition.GeneratedDefinition{}, firstDiagnostic(diags)
+			return ResolvedDefinition{}, firstDiagnostic(diags)
 		}
-		return generated, nil
+		return ResolvedDefinition{GeneratedDefinition: generated, File: shedfile.FileName}, nil
 	}
 	if manifest != nil {
 		parsed, parseErr := definition.ParseManifest(manifest)
 		if parseErr != nil {
-			return definition.GeneratedDefinition{}, parseErr
+			return ResolvedDefinition{}, &diag.Error{
+				Code:    "invalid_definition",
+				Summary: parseErr.Error(),
+				Facts:   []diag.Fact{{Label: "File", Value: filepath.Join(root, definition.ManifestFileName)}},
+				Hints:   []string{"See every problem at once: shed check", definition.DefinitionDocsHint},
+				Cause:   parseErr,
+			}
 		}
-		return definition.GeneratedDefinition{Manifest: parsed, Source: manifest}, nil
+		return ResolvedDefinition{
+			GeneratedDefinition: definition.GeneratedDefinition{Manifest: parsed, Source: manifest},
+			File:                definition.ManifestFileName,
+		}, nil
 	}
-	return GenerateDefinition(root, generator)
+	generated, err := GenerateDefinition(root, generator)
+	if err != nil {
+		return ResolvedDefinition{}, err
+	}
+	resolved := ResolvedDefinition{GeneratedDefinition: generated, File: definition.ManifestFileName}
+	if writeFormat == "" {
+		return resolved, nil
+	}
+	payload := generated.Source
+	if writeFormat == "shed" {
+		if payload, err = shedfile.Render(generated); err != nil {
+			return ResolvedDefinition{}, err
+		}
+		resolved.File = shedfile.FileName
+	}
+	if err := writeAtomically(root, resolved.File, payload); err != nil {
+		return ResolvedDefinition{}, err
+	}
+	resolved.Created = true
+	return resolved, nil
 }
 
 // readDefinitionFiles reads whichever definition files exist and fails when
@@ -412,7 +484,7 @@ func Check(root string) (definition.GeneratedDefinition, string, []*diag.Error, 
 		Facts:   []diag.Fact{{Label: "Looked for", Value: shedfile.FileName + " or " + definition.ManifestFileName}},
 		Hints: []string{
 			"Create one: shed init",
-			"Shed can also build without one, by detection: shed deploy",
+			"Or just deploy; shed deploy writes one and carries on: shed deploy",
 		},
 	}
 }
@@ -464,40 +536,11 @@ func GenerateDefinition(root string, generator definition.DefinitionGenerator) (
 // authoritative and is never regenerated. It returns the definition, whether
 // a file was written, and the name of the file involved.
 func Initialize(root string, generator definition.DefinitionGenerator, format string) (definition.GeneratedDefinition, bool, string, error) {
-	absoluteRoot, err := filepath.Abs(root)
+	resolved, err := ResolveDefinition(root, generator, format)
 	if err != nil {
 		return definition.GeneratedDefinition{}, false, "", err
 	}
-	program, manifest, err := readDefinitionFiles(absoluteRoot)
-	if err != nil {
-		return definition.GeneratedDefinition{}, false, "", err
-	}
-	if program != nil {
-		generated, diags := evaluateProgram(absoluteRoot, program)
-		if len(diags) > 0 {
-			return definition.GeneratedDefinition{}, false, shedfile.FileName, firstDiagnostic(diags)
-		}
-		return generated, false, shedfile.FileName, nil
-	}
-	if manifest != nil {
-		parsed, parseErr := definition.ParseManifest(manifest)
-		return definition.GeneratedDefinition{Manifest: parsed, Source: manifest}, false, definition.ManifestFileName, parseErr
-	}
-	generated, err := GenerateDefinition(absoluteRoot, generator)
-	if err != nil {
-		return definition.GeneratedDefinition{}, false, "", err
-	}
-	payload, filename := generated.Source, definition.ManifestFileName
-	if format == "shed" {
-		if payload, err = shedfile.Render(generated); err != nil {
-			return definition.GeneratedDefinition{}, false, "", err
-		}
-		filename = shedfile.FileName
-	}
-	if err := writeAtomically(absoluteRoot, filename, payload); err != nil {
-		return definition.GeneratedDefinition{}, false, "", err
-	}
-	return generated, true, filename, nil
+	return resolved.GeneratedDefinition, resolved.Created, resolved.File, nil
 }
 
 func writeAtomically(root, filename string, payload []byte) error {

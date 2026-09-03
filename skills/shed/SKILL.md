@@ -7,7 +7,7 @@ description: Help end-users of the `shed` CLI install it, describe an app in a c
 
 Shed packages an app into a deterministic `tar.gz`, builds it, and runs it — on the Shed cloud by default, or locally in Docker with `--local`.
 
-The whole thing is driven by one file at the project root: **`SHED.hcl`** (declarative HCL) or **`SHED`** (Starlark that evaluates to the same shape). `shed init` writes one for you; from then on it is authoritative — shed never regenerates or heals it. Without one, `shed deploy` detects the project and generates the same definition in memory for that deploy alone; it never writes it.
+The whole thing is driven by one file at the project root: **`SHED.hcl`** (declarative HCL) or **`SHED`** (Starlark that evaluates to the same shape). `shed init` writes one for you; from then on it is authoritative — shed never regenerates or heals it. Without one, `shed deploy` detects the project, writes the same `SHED.hcl` `init` would, and carries on — only `--dry-run` looks without writing.
 
 Shed is agent-first: it never prompts except `shed login`, and every command supports `--output json` / `--output ndjson` with a stable failure envelope. Prefer JSON whenever you invoke shed programmatically.
 
@@ -150,7 +150,7 @@ shed schema                  # the Starlark `SHED` API
 3. Review the file. From here it is authoritative — delete it to redetect.
 4. `shed deploy . --output json` — packages and submits it. Returns a ready URL, or a `"pending"` receipt after 30s (see below).
 
-What `deploy` does with the directory: if `SHED.hcl` or `SHED` exists it is used exactly as written. If neither exists, shed detects the project and generates the definition in memory for that deploy only — the project is not written to; step 2 is how you keep one. Either way the archive it ships carries the definition.
+What `deploy` does with the directory: if `SHED.hcl` or `SHED` exists it is used exactly as written. If neither exists, shed detects the project, writes `SHED.hcl` (so step 2 is optional), and carries on; the JSON result's `definition` object says `path`, whether it was `created`, and the `provider` detected. `--dry-run` only looks and writes nothing. Either way the archive it ships carries the definition.
 
 ```
 shed login                                    # opens a browser; the code comes back on its own (only interactive command)

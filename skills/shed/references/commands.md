@@ -55,7 +55,7 @@ Run `shed help --output json` for the same contract as machine-readable JSON.
 
 Send the project to the Shed cloud, or build and run it here with --local.
 
-Deploy looks at the directory and works from one definition. If SHED.hcl or a Starlark SHED file is there, it is used exactly as written and never regenerated. If neither exists, Shed detects the software (Node.js, Next.js, or a Go module) and generates a definition for this deploy only; nothing is written to the project, shed init is what keeps one. Either way the result is packaged into a deterministic archive that carries the definition, and that archive is what gets built and run.
+Deploy looks at the directory and works from one definition. If SHED.hcl or a Starlark SHED file is there, it is used exactly as written and never regenerated. If neither exists, Shed detects the software (Node.js, Next.js, or a Go module), writes SHED.hcl — the same file shed init writes — and carries on, so the next deploy reads it; --dry-run only looks and writes nothing. Either way the result is packaged into a deterministic archive that carries the definition, and that archive is what gets built and run.
 
 | Flag | Type | Default | Purpose |
 |---|---|---|---|

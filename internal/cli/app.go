@@ -236,12 +236,28 @@ func (a *App) deploy(ctx context.Context, b *clispec.Binding) error {
 	}
 	output := b.String("output")
 
+	// The definition comes first, on its own, so a person is told what deploy
+	// is working from — and whether it just wrote SHED.hcl — before the stage
+	// panel takes over the terminal. A dry run only looks; every other deploy
+	// keeps what it detected, so the next one reads the same file.
+	writeFormat := "hcl"
+	if b.Bool("dry-run") {
+		writeFormat = ""
+	}
+	resolved, err := workflow.ResolveDefinition(root, nil, writeFormat)
+	if err != nil {
+		return err
+	}
+	if output == "human" {
+		a.writeResolution(resolved, root)
+	}
+
 	// The cloud is the default. Only an explicit --local, or a flag that never
 	// leaves this machine (--dry-run, --mock), runs the Docker workflow; --remote
 	// is accepted so older invocations keep working, and changes nothing.
 	local := b.Bool("local") || b.Bool("dry-run") || b.Bool("mock")
 	if !local {
-		return a.deployRemote(ctx, root, b.String("archive"), b.String("project"), b.String("request-id"), output,
+		return a.deployRemote(ctx, root, resolved, b.String("archive"), b.String("project"), b.String("request-id"), output,
 			b.Bool("detach"), b.Bool("wait"), b.Provided("wait-timeout"), b.Duration("wait-timeout"))
 	}
 	var progress *diag.Progress
@@ -250,12 +266,13 @@ func (a *App) deploy(ctx context.Context, b *clispec.Binding) error {
 		defer progress.Close()
 	}
 	options := workflow.Options{
-		Root:      root,
-		Archive:   b.String("archive"),
-		RequestID: b.String("request-id"),
-		DryRun:    b.Bool("dry-run"),
-		Mock:      b.Bool("mock"),
-		Deployer:  a.deployer,
+		Root:       root,
+		Archive:    b.String("archive"),
+		RequestID:  b.String("request-id"),
+		DryRun:     b.Bool("dry-run"),
+		Mock:       b.Bool("mock"),
+		Deployer:   a.deployer,
+		Definition: &resolved,
 	}
 	if progress != nil {
 		options.Progress = progress
@@ -290,6 +307,33 @@ func (a *App) deploy(ctx context.Context, b *clispec.Binding) error {
 		_, _ = fmt.Fprintln(a.stdout, "Dry run: nothing was built, started, or uploaded.")
 	}
 	return nil
+}
+
+// writeResolution is the first thing a person sees from deploy: which
+// definition it is working from, and whether it was just written, before the
+// stage panel starts. It goes to stderr with the rest of the narration, so
+// stdout stays the result alone.
+func (a *App) writeResolution(resolved workflow.ResolvedDefinition, root string) {
+	style := diag.NewStyler(a.stderr)
+	manifest := resolved.Manifest
+	path := filepath.Join(root, resolved.File)
+	contract := fmt.Sprintf("Builds with %s, packages %s, runs %q on port %d (%s).",
+		manifest.Build.Image, describePaths(manifest.Content.Include),
+		strings.Join(manifest.Run.Command, " "), manifest.Run.Port, portSource(resolved.Provider != ""))
+	switch {
+	case resolved.Created:
+		_, _ = fmt.Fprintf(a.stderr, "%s Nothing described this project yet, so Shed looked: %s.\n",
+			style.Strong("Wrote "+path+"."), detectionSummary(resolved.Provider))
+		_, _ = fmt.Fprintf(a.stderr, "  %s\n", contract)
+		_, _ = fmt.Fprintln(a.stderr, "  Edit it any time; it is never regenerated. Delete it to detect again.")
+	case resolved.Provider != "":
+		_, _ = fmt.Fprintf(a.stderr, "%s Shed looked: %s. A deploy would write %s; this dry run writes nothing.\n",
+			style.Strong("No definition here."), detectionSummary(resolved.Provider), path)
+		_, _ = fmt.Fprintf(a.stderr, "  %s\n", contract)
+	default:
+		_, _ = fmt.Fprintf(a.stderr, "%s %s\n", style.Strong("Using "+path+"."), contract)
+	}
+	_, _ = fmt.Fprintln(a.stderr)
 }
 
 // errAlreadyReported marks a failure whose full story is already on screen;
@@ -481,15 +525,21 @@ func describeDefinition(generated definition.GeneratedDefinition, created bool, 
 	if created {
 		verb = "Wrote"
 	}
-	paths := "1 top-level path"
-	if count := len(manifest.Content.Include); count != 1 {
-		paths = fmt.Sprintf("%d top-level paths", count)
-	}
-	return fmt.Sprintf("%s %s. Detected %s. Builds with %s, packages %s (%s), then runs %q on port %d (%s).",
+	return fmt.Sprintf("%s %s. Detected %s. Builds with %s, packages %s, then runs %q on port %d (%s).",
 		verb, path, detectionSummary(generated.Provider), manifest.Build.Image,
-		paths, describeInclude(manifest.Content.Include),
+		describePaths(manifest.Content.Include),
 		strings.Join(manifest.Run.Command, " "), manifest.Run.Port,
 		portSource(generated.Provider != ""))
+}
+
+// describePaths is "N top-level paths (a, b, c)", the content closure in one
+// phrase.
+func describePaths(include []string) string {
+	paths := "1 top-level path"
+	if count := len(include); count != 1 {
+		paths = fmt.Sprintf("%d top-level paths", count)
+	}
+	return paths + " (" + describeInclude(include) + ")"
 }
 
 // writeDefinitionReport explains the definition rather than announcing that a
@@ -558,29 +608,41 @@ func (a *App) remoteBackend() (execution.Backend, error) {
 	return a.configuredClient()
 }
 
-func (a *App) deployRemote(ctx context.Context, root, archivePath, project, requestID, output string, detach, wait, waitTimeoutSet bool, waitTimeout time.Duration) error {
-	prepared, err := workflow.Prepare(workflow.Options{Root: root, Archive: archivePath})
-	if err != nil {
+func (a *App) deployRemote(ctx context.Context, root string, resolved workflow.ResolvedDefinition, archivePath, project, requestID, output string, detach, wait, waitTimeoutSet bool, waitTimeout time.Duration) error {
+	// Packaging is the first row of the same panel the cloud stages fill in,
+	// so the person watching sees one continuous story from archive to URL.
+	progress, observer := a.remoteObserver(output, "package")
+	if progress != nil {
+		defer progress.Close()
+		progress.Start("package")
+	}
+	fail := func(err error) error {
+		if progress != nil {
+			progress.Fail(err)
+		}
 		return err
 	}
+	prepared, err := workflow.Prepare(workflow.Options{Root: root, Archive: archivePath, Definition: &resolved})
+	if err != nil {
+		return fail(err)
+	}
 	defer func() { _ = prepared.Close() }()
+	if progress != nil {
+		progress.StageDone("package", workflow.PackageSummary(prepared.Archive))
+	}
 	projectName, err := definition.ProjectName(prepared.Root, project, prepared.Manifest)
 	if err != nil {
-		return err
+		return fail(err)
 	}
 	backend, err := a.remoteBackend()
 	if err != nil {
-		return err
+		return fail(err)
 	}
 	waitOptions := execution.WaitOptions{Mode: execution.WaitTimeout, Timeout: waitTimeout, Stage: execution.StageAll}
 	if detach {
 		waitOptions.Mode = execution.WaitDetach
 	} else if wait && !waitTimeoutSet {
 		waitOptions.Mode = execution.WaitTerminal
-	}
-	progress, observer := a.remoteObserver(output)
-	if progress != nil {
-		defer progress.Close()
 	}
 	result, err := (execution.Coordinator{Backend: backend}).Execute(ctx, execution.Request{
 		ProjectName: projectName,
@@ -589,10 +651,7 @@ func (a *App) deployRemote(ctx context.Context, root, archivePath, project, requ
 		Archive:     prepared.Archive,
 	}, waitOptions, observer)
 	if err != nil {
-		if progress != nil {
-			progress.Fail(err)
-		}
-		return err
+		return fail(err)
 	}
 	if progress != nil {
 		if result.Outcome == "ready" {
@@ -601,6 +660,8 @@ func (a *App) deployRemote(ctx context.Context, root, archivePath, project, requ
 			progress.Close()
 		}
 	}
+	resolution := resolved.Resolution()
+	result.Definition = &resolution
 	return a.writeExecutionResult(result, output)
 }
 
@@ -629,13 +690,15 @@ func stageForState(state execution.State) string {
 
 // remoteObserver picks the right observer for the requested output.
 //   - human: build a Progress panel and route State transitions into it. The
-//     returned Progress must be Closed/Finished/Failed by the caller.
+//     returned Progress must be Closed/Finished/Failed by the caller. Any
+//     leadingStages come first in the panel, for work the caller does itself
+//     before the cloud takes over.
 //   - ndjson: passthrough encoder, no progress panel.
 //   - json: no observer runs — a JSON result is emitted only at the end.
-func (a *App) remoteObserver(output string) (*diag.Progress, execution.Observer) {
+func (a *App) remoteObserver(output string, leadingStages ...string) (*diag.Progress, execution.Observer) {
 	switch output {
 	case "human":
-		progress := diag.NewProgress(a.stderr, remoteStages...)
+		progress := diag.NewProgress(a.stderr, append(append([]string(nil), leadingStages...), remoteStages...)...)
 		return progress, func(record execution.Record) error {
 			if stage := stageForState(record.State); stage != "" {
 				progress.Start(stage)

@@ -30,7 +30,7 @@ var Groups = []Group{
 				Usage:   "[directory]",
 				Summary: "Send the project to the Shed cloud, or build and run it here with --local",
 				Description: "Deploy looks at the directory and works from one definition. If " + DefinitionFileName + " or a Starlark SHED file is there, it is used exactly as written and never regenerated. " +
-					"If neither exists, Shed detects the software (Node.js, Next.js, or a Go module) and generates a definition for this deploy only; nothing is written to the project, shed init is what keeps one. " +
+					"If neither exists, Shed detects the software (Node.js, Next.js, or a Go module), writes " + DefinitionFileName + " — the same file shed init writes — and carries on, so the next deploy reads it; --dry-run only looks and writes nothing. " +
 					"Either way the result is packaged into a deterministic archive that carries the definition, and that archive is what gets built and run.",
 				MinArgs:   0,
 				MaxArgs:   1,

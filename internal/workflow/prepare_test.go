@@ -203,7 +203,7 @@ func TestTwoDefinitionsAreAConflict(t *testing.T) {
 	writeWorkflowFile(t, root, "go.mod", "module example.com/service\n\ngo 1.24\n")
 	writeWorkflowFile(t, root, "SHED", "b = 1\n")
 	writeWorkflowFile(t, root, definition.ManifestFileName, "application \"service\" {}\n")
-	_, err := ResolveDefinition(root, nil)
+	_, err := ResolveDefinition(root, nil, "")
 	diagnostic, ok := diag.As(err)
 	if !ok || diagnostic.Code != "definition_conflict" {
 		t.Fatalf("err = %v", err)
@@ -228,7 +228,7 @@ c = build(
     image = "golang:1.24",
 )
 `)
-	_, err := ResolveDefinition(root, nil)
+	_, err := ResolveDefinition(root, nil, "")
 	diagnostic, ok := diag.As(err)
 	if !ok || diagnostic.Code != "unknown_src" {
 		t.Fatalf("err = %v", err)

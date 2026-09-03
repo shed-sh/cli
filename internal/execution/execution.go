@@ -110,6 +110,10 @@ type Result struct {
 	Bundle        *Bundle    `json:"bundle,omitempty"`
 	Deployment    Deployment `json:"deployment"`
 	NextOperation string     `json:"nextOperation,omitempty"`
+	// Definition says which definition file the deploy worked from and
+	// whether it was written on the way. The CLI fills it in; the backend
+	// never sees it.
+	Definition *definition.Resolution `json:"definition,omitempty"`
 }
 
 type Project struct {

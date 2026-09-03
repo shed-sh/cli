@@ -215,6 +215,119 @@ func TestRemoteDeployPackagesThenReturnsResumableReceipt(t *testing.T) {
 	if backend.request.Archive.Content.FileCount == 0 || backend.request.Archive.Digest == "" {
 		t.Fatalf("archive = %#v", backend.request.Archive)
 	}
+	// Nothing described the project, so deploy wrote the definition it
+	// detected and says so in the receipt.
+	if result.Definition == nil || !result.Definition.Created || result.Definition.Path != "SHED.hcl" || result.Definition.Provider != "node" {
+		t.Fatalf("definition = %#v", result.Definition)
+	}
+	if _, err := os.Stat(filepath.Join(root, "SHED.hcl")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDeployWritesTheDefinitionItDetects pins the default: a project with no
+// definition gets SHED.hcl written on its first deploy, and the next deploy
+// reads that file instead of detecting again.
+func TestDeployWritesTheDefinitionItDetects(t *testing.T) {
+	root := t.TempDir()
+	writeCLIFile(t, root, "package.json", `{"scripts":{"start":"node index.js"}}`)
+	writeCLIFile(t, root, "package-lock.json", `{"lockfileVersion":3}`)
+	writeCLIFile(t, root, "index.js", "console.log('ready')\n")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	app := New(&stdout, &stderr, "test")
+
+	if exit := app.Run(context.Background(), []string{"deploy", root, "--mock", "--output", "json"}); exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var first workflow.Result
+	if err := json.Unmarshal(stdout.Bytes(), &first); err != nil {
+		t.Fatalf("decode: %v\n%s", err, stdout.String())
+	}
+	if !first.Definition.Created || first.Definition.Path != "SHED.hcl" || first.Definition.Provider != "node" {
+		t.Fatalf("first definition = %#v", first.Definition)
+	}
+	written, err := os.ReadFile(filepath.Join(root, "SHED.hcl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(written, []byte(`application "`)) {
+		t.Fatalf("SHED.hcl = %s", written)
+	}
+
+	stdout.Reset()
+	if exit := app.Run(context.Background(), []string{"deploy", root, "--mock", "--output", "json"}); exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var second workflow.Result
+	if err := json.Unmarshal(stdout.Bytes(), &second); err != nil {
+		t.Fatalf("decode: %v\n%s", err, stdout.String())
+	}
+	if second.Definition.Created || second.Definition.Provider != "" || second.Definition.Path != "SHED.hcl" {
+		t.Fatalf("second definition = %#v; the file should have been read, not redetected", second.Definition)
+	}
+	if second.Source.ContentDigest != first.Source.ContentDigest {
+		t.Fatalf("content digest drifted between the written file and the reread: %s vs %s", first.Source.ContentDigest, second.Source.ContentDigest)
+	}
+}
+
+// A dry run answers "what would ship" and must leave the project exactly as
+// it found it — including no definition file.
+func TestDryRunNeverWritesTheDefinition(t *testing.T) {
+	root := t.TempDir()
+	writeCLIFile(t, root, "package.json", `{"scripts":{"start":"node index.js"}}`)
+	writeCLIFile(t, root, "package-lock.json", `{"lockfileVersion":3}`)
+	writeCLIFile(t, root, "index.js", "console.log('ready')\n")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	app := New(&stdout, &stderr, "test")
+	if exit := app.Run(context.Background(), []string{"deploy", root, "--dry-run", "--output", "json"}); exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	var result workflow.Result
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode: %v\n%s", err, stdout.String())
+	}
+	if result.Definition.Created || result.Definition.Provider != "node" || result.Definition.Path != "SHED.hcl" {
+		t.Fatalf("definition = %#v", result.Definition)
+	}
+	if _, err := os.Stat(filepath.Join(root, "SHED.hcl")); !os.IsNotExist(err) {
+		t.Fatalf("dry run wrote the definition: %v", err)
+	}
+}
+
+// TestDeployTellsAPersonWhatItIsWorkingFrom pins the narration: before any
+// stage runs, a human deploy says which definition it has — written just now,
+// or read from disk — on stderr, while stdout stays the result alone.
+func TestDeployTellsAPersonWhatItIsWorkingFrom(t *testing.T) {
+	root := t.TempDir()
+	writeCLIFile(t, root, "package.json", `{"scripts":{"start":"node index.js"}}`)
+	writeCLIFile(t, root, "package-lock.json", `{"lockfileVersion":3}`)
+	writeCLIFile(t, root, "index.js", "console.log('ready')\n")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	app := New(&stdout, &stderr, "test")
+
+	if exit := app.Run(context.Background(), []string{"deploy", root, "--mock"}); exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	for _, want := range []string{"Wrote " + filepath.Join(root, "SHED.hcl"), "Node.js", "Builds with node:", "npm run start", "port 8080", "Delete it to detect again"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr never says %q:\n%s", want, stderr.String())
+		}
+	}
+	if !strings.HasPrefix(stdout.String(), "Packaged ") || strings.Contains(stdout.String(), "Wrote ") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if exit := app.Run(context.Background(), []string{"deploy", root, "--mock"}); exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "Using "+filepath.Join(root, "SHED.hcl")) || strings.Contains(stderr.String(), "Wrote ") {
+		t.Fatalf("second deploy stderr = %q", stderr.String())
+	}
 }
 
 // TestRemoteFlagStillMeansTheCloud keeps `--remote` working for scripts written
