@@ -99,7 +99,7 @@ The file is Starlark, so ordinary program shapes work: variables, `def` function
 - `load()` is not supported — the file is self-contained.
 - Evaluation is step-capped, so a pathological loop fails instead of hanging a deploy.
 
-Not yet supported (stated by the tool itself in errors, the schema, and the generated header): param(), worker(), static_site(), multiple apps, detect(), load(), build-time env. The remote-builder `base`/`parts`/`apps` projection cannot be expressed here — keep `SHED.yaml` if you deploy one of those with `--remote`.
+Not yet supported (stated by the tool itself in errors, the schema, and the generated header): param(), worker(), static_site(), multiple apps, detect(), load(), build-time env. The remote-builder `base`/`parts`/`apps` projection cannot be expressed here — keep `SHED.yaml` if you deploy one of those.
 
 ## What evaluation produces
 

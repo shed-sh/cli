@@ -1,11 +1,11 @@
 ---
 name: shed
-description: Help end-users of the `shed` CLI install it, describe an app in a clean `SHED.yaml` (or Starlark `SHED`), and deploy it — locally with Docker or to the Shed cloud with `--remote`. Trigger when the user runs `shed` (init/check/schema/deploy/status/logs/cancel/stop/destroy/login/whoami/share), edits `SHED.yaml` (apiVersion `shed.run/v1alpha1`, kind `Application`), edits a Starlark `SHED` file, writes a `.shedignore`, or asks about shed error codes, the deploy state machine, or shed's JSON/NDJSON output contract. Do NOT trigger for unrelated Go CLIs, generic Dockerfiles, Railpack used outside of shed, or contributing to the shed codebase itself.
+description: Help end-users of the `shed` CLI install it, describe an app in a clean `SHED.yaml` (or Starlark `SHED`), and deploy it — to the Shed cloud by default, or locally in Docker with `--local`. Trigger when the user runs `shed` (init/check/schema/deploy/status/logs/cancel/stop/destroy/login/whoami/share), edits `SHED.yaml` (apiVersion `shed.run/v1alpha1`, kind `Application`), edits a Starlark `SHED` file, writes a `.shedignore`, or asks about shed error codes, the deploy state machine, or shed's JSON/NDJSON output contract. Do NOT trigger for unrelated Go CLIs, generic Dockerfiles, Railpack used outside of shed, or contributing to the shed codebase itself.
 ---
 
 # shed
 
-Shed packages an app into a deterministic `tar.gz`, builds it, and runs it — locally in Docker or on the Shed cloud with `--remote`.
+Shed packages an app into a deterministic `tar.gz`, builds it, and runs it — on the Shed cloud by default, or locally in Docker with `--local`.
 
 The whole thing is driven by one file at the project root: **`SHED.yaml`** (declarative) or **`SHED`** (Starlark that evaluates to the same shape). `shed init` writes one for you; from then on it is authoritative — shed never regenerates or heals it.
 
@@ -29,16 +29,16 @@ npx @shed-sh/skills --local
 
 `--global` (the default) clones one copy into `~/.shed/skills` and symlinks it into every coding agent on the machine. `--local` copies it into `.claude/skills/shed` so the project carries the skill. git is the only requirement; rerun to update.
 
-Requires Docker running for local builds. `--mock` skips Docker for packaging tests.
+Docker is only needed for `--local`. `--mock` packages without Docker or the cloud, for checking what would ship.
 
-Verify with `shed version`. Sign in for cloud deploys with `shed login`.
+Verify with `shed version`. Sign in with `shed login` before deploying.
 
 ## The three commands you actually run
 
 ```
 shed init              # detect the project and write SHED.yaml
-shed deploy .          # package → build → run locally (`shed .` is shorthand)
-shed deploy . --remote # submit to the Shed cloud (needs `shed login`)
+shed deploy .          # package → submit to the Shed cloud (`shed .` is shorthand; needs `shed login`)
+shed deploy . --local  # package → build → run here, in Docker
 ```
 
 Everything else operates on the deployment id or instance id printed by `deploy`. Full surface:
@@ -46,7 +46,7 @@ Everything else operates on the deployment id or instance id printed by `deploy`
 <!-- BEGIN GENERATED: commands -->
 | Command | Purpose |
 |---|---|
-| `shed deploy [directory]` | Build the project and run it locally, or send it up with --remote |
+| `shed deploy [directory]` | Send the project to the Shed cloud, or build and run it here with --local |
 | `shed init [directory]` | Look at the project and write SHED.yaml, or SHED with --format shed |
 | `shed check [directory]` | Evaluate the definition and report every problem in it |
 | `shed schema` | Print the SHED file API |
@@ -136,13 +136,28 @@ shed schema                  # the Starlark `SHED` API
 
 `shed check` exits 1 with `outcome: "invalid"` and a `diagnostics` array on failure; on success it returns `outcome: "valid"` plus the evaluated `application` so you can confirm what shed actually parsed. Prefer it over `shed deploy` while iterating.
 
-## Deploy: local
+## Deploy: cloud (the default)
 
 1. `cd` into the app root.
 2. `shed init --output json` — writes `SHED.yaml`. The `definitionReport` in the JSON shows detected provider, includes, builds, run command, and whether the port is `assumed` or `declared`.
 3. Review the file. From here it is authoritative — delete it to redetect.
-4. `shed deploy .` — builds a Docker image and starts one container. On success prints `Ready: <url> (HTTP <code>)` and an instance id.
-5. `shed stop <instance-id>` to stop; `shed destroy <instance-id>` to also forget it.
+4. `shed deploy . --output json` — packages and submits it. Returns a ready URL, or a `"pending"` receipt after 30s (see below).
+
+```
+shed login                                    # opens a browser; the code comes back on its own (only interactive command)
+shed . --output json                          # returns a ready URL, or a "pending" receipt after 30s
+shed status <dep-id> --wait --output ndjson   # resume if it came back pending
+shed logs   <dep-id> --stage build --follow --output ndjson
+shed cancel <dep-id>
+```
+
+- Default wait timeout is 30s; a `"pending"` result **is not a failure** — resume with `shed status <id> --wait` rather than re-deploying.
+- If a deploy errors, times out, or returns `pending`, report exactly what shed printed. Never invent a deployment URL.
+- `--remote` is accepted and changes nothing; the cloud is already the default.
+
+## Deploy: local (optional, needs Docker)
+
+`shed deploy . --local` builds a Docker image on this machine and starts one container. On success prints `Ready: <url> (HTTP <code>)` and an instance id. `shed stop <instance-id>` to stop; `shed destroy <instance-id>` to also forget it. `--local`, `--mock`, and `--remote` are mutually exclusive.
 
 Preview what will actually ship, without building:
 
@@ -150,20 +165,6 @@ Preview what will actually ship, without building:
 shed deploy . --dry-run --archive /tmp/app.tar.gz --output json
 tar -tzf /tmp/app.tar.gz
 ```
-
-## Deploy: remote (Shed cloud)
-
-```
-shed login                                    # opens a browser; the code comes back on its own (only interactive command)
-shed . --remote --output json                 # returns a ready URL, or a "pending" receipt after 30s
-shed status <dep-id> --wait --output ndjson   # resume if it came back pending
-shed logs   <dep-id> --stage build --follow --output ndjson
-shed cancel <dep-id>
-```
-
-- `--remote` and `--mock` are mutually exclusive; `--detach` and `--wait` are mutually exclusive.
-- Default wait timeout is 30s; a `"pending"` result **is not a failure** — resume with `shed status <id> --wait` rather than re-deploying.
-- If `--remote` errors, times out, or returns `pending`, report exactly what shed printed. Never invent a deployment URL.
 
 ## `shed init` autodetection scope
 

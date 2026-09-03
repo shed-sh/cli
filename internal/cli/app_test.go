@@ -185,6 +185,9 @@ func TestInitWritesAndThenValidatesDefinition(t *testing.T) {
 	}
 }
 
+// TestRemoteDeployPackagesThenReturnsResumableReceipt pins the default: a plain
+// `shed <directory>` goes to the cloud. No --remote is needed, and no Docker is
+// consulted.
 func TestRemoteDeployPackagesThenReturnsResumableReceipt(t *testing.T) {
 	root := t.TempDir()
 	writeCLIFile(t, root, "package.json", `{"scripts":{"start":"node index.js"}}`)
@@ -195,7 +198,7 @@ func TestRemoteDeployPackagesThenReturnsResumableReceipt(t *testing.T) {
 	var stderr bytes.Buffer
 	app := New(&stdout, &stderr, "test")
 	app.remote = backend
-	exit := app.Run(context.Background(), []string{root, "--remote", "--detach", "--project", "agent-app", "--request-id", "agent-request", "--output", "json"})
+	exit := app.Run(context.Background(), []string{root, "--detach", "--project", "agent-app", "--request-id", "agent-request", "--output", "json"})
 	if exit != 0 {
 		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
 	}
@@ -211,6 +214,56 @@ func TestRemoteDeployPackagesThenReturnsResumableReceipt(t *testing.T) {
 	}
 	if backend.request.Archive.Content.FileCount == 0 || backend.request.Archive.Digest == "" {
 		t.Fatalf("archive = %#v", backend.request.Archive)
+	}
+}
+
+// TestRemoteFlagStillMeansTheCloud keeps `--remote` working for scripts written
+// when the cloud was opt-in. It changes nothing; it must not start rejecting.
+func TestRemoteFlagStillMeansTheCloud(t *testing.T) {
+	root := t.TempDir()
+	writeCLIFile(t, root, "package.json", `{"scripts":{"start":"node index.js"}}`)
+	writeCLIFile(t, root, "package-lock.json", `{"lockfileVersion":3}`)
+	writeCLIFile(t, root, "index.js", "console.log('ready')\n")
+	backend := &cliRemoteBackend{status: execution.Deployment{ID: "dep_remote", State: execution.StateAccepted}}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	app := New(&stdout, &stderr, "test")
+	app.remote = backend
+	if exit := app.Run(context.Background(), []string{"deploy", root, "--remote", "--detach", "--output", "json"}); exit != 0 {
+		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
+	}
+	if backend.request.Archive.Digest == "" {
+		t.Fatalf("--remote never reached the backend: %#v", backend.request)
+	}
+}
+
+// TestLocalDeployIsTheDockerPath pins that Docker is only ever consulted behind
+// --local, and that the failure when it is missing points back at the default.
+func TestLocalDeployIsTheDockerPath(t *testing.T) {
+	root := t.TempDir()
+	writeCLIFile(t, root, "package.json", `{"scripts":{"start":"node index.js"}}`)
+	writeCLIFile(t, root, "package-lock.json", `{"lockfileVersion":3}`)
+	writeCLIFile(t, root, "index.js", "console.log('ready')\n")
+	t.Setenv("SHED_DOCKER_BIN", "shed-test-no-docker-here")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	app := New(&stdout, &stderr, "test")
+	app.remote = &cliRemoteBackend{status: execution.Deployment{ID: "dep_remote", State: execution.StateAccepted}}
+	if exit := app.Run(context.Background(), []string{"deploy", root, "--local", "--output", "json"}); exit != 1 {
+		t.Fatalf("exit=%d stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	var result struct {
+		Outcome string            `json:"outcome"`
+		Failure execution.Failure `json:"failure"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode failure: %v\n%s", err, stdout.String())
+	}
+	if result.Outcome != "failed" || result.Failure.Code != "runtime_unavailable" {
+		t.Fatalf("result = %#v", result)
+	}
+	if !strings.Contains(result.Failure.Message, "shed deploy") {
+		t.Fatalf("failure never points at the cloud default: %q", result.Failure.Message)
 	}
 }
 

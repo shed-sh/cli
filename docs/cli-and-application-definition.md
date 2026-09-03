@@ -38,8 +38,8 @@ The corresponding Shed cloud backend does **not** exist yet.
 
 - CLI authentication and an `internal/execution` orchestration boundary for
   immutable bundle upload, idempotent deployment submission, resumable event/log
-  streaming, status reconciliation, and cancellation. `shed --remote` uses this
-  client; no matching backend is implemented in this repository.
+  streaming, status reconciliation, and cancellation. Plain `shed deploy` uses
+  this client; no matching backend is implemented in this repository.
 - Railpack `v0.35.0` provider orchestration vendored as a nested Go module,
   excluding BuildKit lowering, image exporters, and CLI presentation code.
 - Provider precedence and Procfile post-detection behavior preserved.
@@ -62,10 +62,11 @@ The corresponding Shed cloud backend does **not** exist yet.
   validated without redetection.
 - Canonical source manifests, separate content/archive digests, and a
   deterministic `tar.gz` transport.
-- `shed deploy`, and its `shed <directory>` shorthand, build a local Docker image,
-  start one stable per-project instance, and classify readiness. `--mock`
-  preserves the offline archive/uploader path. Bare `shed` inspects nothing and
-  prints the overview instead.
+- `shed deploy`, and its `shed <directory>` shorthand, package the project and
+  submit it to the cloud. `--local` instead builds a Docker image on this
+  machine, starts one stable per-project instance, and classifies readiness.
+  `--mock` preserves the offline archive/uploader path. Bare `shed` inspects
+  nothing and prints the overview instead.
 - Daemon-backed E2E tests verify source packaging, Docker build, serving code,
   stable reruns, source updates, and building after the original source tree has
   been deleted. CI runs these tests on Linux with Docker.
@@ -89,8 +90,8 @@ The corresponding Shed cloud backend does **not** exist yet.
 - Generated definitions currently use deterministic conventions; hosted LLM
   generation is not implemented yet.
 - Incremental missing-blob negotiation is not implemented yet.
-- The local runtime is Docker-based; remote isolation, image retention, and
-  hosted networking are not implemented.
+- The optional `--local` runtime is Docker-based; remote isolation, image
+  retention, and hosted networking are not implemented.
 - There is no artifact build cache, secret injection, capability approval, or
   provenance chain for the new application-definition path.
 
@@ -109,8 +110,8 @@ The corresponding Shed cloud backend does **not** exist yet.
    pushes the resulting OCI image to a registry.
 5. Run the produced image remotely with stable application identity, logs, and
    classified bind, early-exit, timeout, and HTTP failures.
-6. Add stable ingress, then promote the currently explicit `--remote` path to
-   plain `shed deploy` and return the verified URL.
+6. Add stable ingress and return the verified URL. (Plain `shed deploy` already
+   selects the cloud; Docker is opt-in with `--local`.)
 7. Add a cloud E2E from fixture source through public HTTP response.
 8. Add Railpack-to-SHED lowering and runtime E2E coverage for Python, Bun, Go
    workspaces, and additional retained providers.

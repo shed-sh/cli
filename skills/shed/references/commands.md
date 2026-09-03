@@ -30,7 +30,7 @@ Run `shed help --output json` for the same contract as machine-readable JSON.
 
 | Command | Purpose |
 |---|---|
-| `shed deploy [directory]` | Build the project and run it locally, or send it up with --remote |
+| `shed deploy [directory]` | Send the project to the Shed cloud, or build and run it here with --local |
 | `shed init [directory]` | Look at the project and write SHED.yaml, or SHED with --format shed |
 | `shed check [directory]` | Evaluate the definition and report every problem in it |
 | `shed schema` | Print the SHED file API |
@@ -53,13 +53,14 @@ Run `shed help --output json` for the same contract as machine-readable JSON.
 
 ### `shed deploy [directory]`
 
-Build the project and run it locally, or send it up with --remote.
+Send the project to the Shed cloud, or build and run it here with --local.
 
 | Flag | Type | Default | Purpose |
 |---|---|---|---|
-| `--dry-run` | bool | — | Inspect and package, without building or running |
-| `--mock` | bool | — | Package and stop, for when Docker is unavailable |
-| `--remote` | bool | — | Send the packaged bundle to Shed cloud |
+| `--local` | bool | — | Build and run the project in Docker on this machine instead of the cloud |
+| `--dry-run` | bool | — | Inspect and package, without building, running, or uploading |
+| `--mock` | bool | — | Package and stop; needs neither Docker nor the cloud |
+| `--remote` | bool | — | Accepted for compatibility; the cloud is already the default |
 | `--archive <path>` | string | — | Keep the generated .tar.gz at this path |
 | `--output human\|json\|ndjson` | string | `human` | Choose the output format |
 | `--project <name>` | string | — | Override the remote project name |
@@ -69,14 +70,15 @@ Build the project and run it locally, or send it up with --remote.
 | `--wait-timeout <duration>` | duration | `30s` | How long to follow before detaching |
 | `--non-interactive` | bool | — | Accepted for compatibility; Shed never prompts |
 
-Mutually exclusive: `--remote` with `--mock`; `--detach` with `--wait`; `--detach` with `--wait-timeout`.
+Mutually exclusive: `--local` with `--remote`; `--local` with `--mock`; `--remote` with `--mock`; `--detach` with `--wait`; `--detach` with `--wait-timeout`.
 
 Wrong argument count returns `usage: shed deploy [directory]`.
 
 ```
-shed deploy                                    # Build and run this project
+shed deploy                                    # Send this project to the Shed cloud
+shed deploy . --output json                    # The same, as one JSON result
+shed deploy . --local                          # Build and run it here, in Docker
 shed deploy . --dry-run --archive app.tar.gz   # Package it and look inside
-shed deploy . --remote --output json           # Send it up, one JSON result
 ```
 
 ### `shed init [directory]`

@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/shed-sh/cli?display_name=tag&sort=semver)](https://github.com/shed-sh/cli/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Deploy small software from your terminal. One file describes the app, and `shed deploy` packages it into a deterministic archive, builds it, and runs it: locally in Docker, or on the Shed cloud with a live URL.
+Deploy small software from your terminal. One file describes the app, and `shed deploy` packages it into a deterministic archive, builds it on the Shed cloud, and hands back a live URL. Nothing but the CLI needs to be installed.
 
 Shed is **agent-first**: it never prompts (except `shed login`), every command speaks `--output json`, and errors come back with stable codes and concrete next steps. It works the same from your terminal, from CI, and from a coding agent's shell.
 
@@ -34,20 +34,20 @@ The skill is a separate package. `--global` (the default) copies one copy into `
 
 ```sh
 cd your-app
+shed login         # opens a browser; the one interactive command
 shed init          # reads the project, writes SHED.yaml
-shed deploy .      # builds and runs it locally (needs Docker)
-```
-
-The local run packages a deterministic archive, builds an image, and starts one container. On success Shed prints a URL and an instance id.
-
-## Deploy to the cloud
-
-```sh
-shed login                # opens a browser; the one interactive command
-shed deploy . --remote    # builds on Shed, hands back a live URL
+shed deploy .      # builds on Shed, hands back a live URL
 ```
 
 Follow a long build with `shed status <deployment> --wait`. Fetch logs with `shed logs <deployment>`.
+
+## Run it on this machine instead
+
+```sh
+shed deploy . --local     # builds an image and starts one container (needs Docker)
+```
+
+This is optional. The local run packages the same deterministic archive, builds it in Docker, and starts one container; on success Shed prints a URL and an instance id. `shed stop <instance>` stops it. Without Docker, `shed deploy . --mock` still packages the project so you can see what would ship.
 
 ## Author the definition
 
@@ -114,7 +114,7 @@ shed help --output json
 
 ## Developing
 
-Go 1.26+, [Task](https://taskfile.dev), and Docker for local deploys.
+Go 1.26+, [Task](https://taskfile.dev), and Docker for `--local` deploys and their e2e tests.
 
 ```sh
 task build            # build the CLI

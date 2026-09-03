@@ -15,8 +15,8 @@ func TestCLISourceToRunningDockerEndToEnd(t *testing.T) {
 	init := runShed(t, home, root, 0, "init", "--output", "json")
 	requireShedSuccess(t, init, "init", "--output", "json")
 
-	deploy := runShed(t, home, root, 5*time.Minute, "deploy", ".", "--output", "json")
-	requireShedSuccess(t, deploy, "deploy", ".")
+	deploy := runShed(t, home, root, 5*time.Minute, "deploy", ".", "--local", "--output", "json")
+	requireShedSuccess(t, deploy, "deploy", ".", "--local")
 	var result struct {
 		Outcome  string `json:"outcome"`
 		Instance *struct {

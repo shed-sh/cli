@@ -236,7 +236,11 @@ func (a *App) deploy(ctx context.Context, b *clispec.Binding) error {
 	}
 	output := b.String("output")
 
-	if b.Bool("remote") && !b.Bool("dry-run") {
+	// The cloud is the default. Only an explicit --local, or a flag that never
+	// leaves this machine (--dry-run, --mock), runs the Docker workflow; --remote
+	// is accepted so older invocations keep working, and changes nothing.
+	local := b.Bool("local") || b.Bool("dry-run") || b.Bool("mock")
+	if !local {
 		return a.deployRemote(ctx, root, b.String("archive"), b.String("project"), b.String("request-id"), output,
 			b.Bool("detach"), b.Bool("wait"), b.Provided("wait-timeout"), b.Duration("wait-timeout"))
 	}
@@ -533,7 +537,8 @@ func (a *App) writeDefinitionReport(generated definition.GeneratedDefinition, cr
 	}
 	_, _ = fmt.Fprintf(a.stdout, "  Read %s; from here on it decides the build and is never regenerated\n", filename)
 	_, _ = fmt.Fprintf(a.stdout, "  See exactly which files get packaged: shed deploy%s --dry-run --output json\n", target)
-	_, _ = fmt.Fprintf(a.stdout, "  Build and run it: shed deploy%s\n", target)
+	_, _ = fmt.Fprintf(a.stdout, "  Deploy it: shed deploy%s\n", target)
+	_, _ = fmt.Fprintf(a.stdout, "  Or build and run it here, in Docker: shed deploy%s --local\n", target)
 }
 
 // describeInclude keeps the content closure readable when a project has many

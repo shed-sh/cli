@@ -45,7 +45,7 @@ func Render(generated definition.GeneratedDefinition) ([]byte, error) {
 	}
 	if manifest.Base != "" || len(manifest.Parts) > 0 || len(manifest.Apps) > 0 {
 		out.WriteString("# The cloud builder projection (base/parts/apps) cannot be expressed here\n")
-		out.WriteString("# yet and was omitted; keep SHED.yaml instead if you deploy with --remote.\n")
+		out.WriteString("# yet and was omitted; keep SHED.yaml instead if you deploy one.\n")
 	}
 
 	out.WriteString("b = build(\n")

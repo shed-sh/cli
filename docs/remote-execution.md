@@ -17,8 +17,9 @@ Railpack inspection → SHED.yaml → deterministic archive
 
 The preparation side may inspect the project directory. Execution receives only
 the validated manifest and immutable archive and must never infer from the
-original source tree. The local Docker path remains the default until the remote
-backend has a passing cloud E2E; `--remote` selects this contract today.
+original source tree. Plain `shed deploy` selects this contract; the local
+Docker path is opt-in with `--local`, and `--remote` is kept as a no-op alias
+for invocations written when the cloud was the explicit choice.
 
 ## HTTP sequence
 

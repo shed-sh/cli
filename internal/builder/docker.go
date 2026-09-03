@@ -33,10 +33,11 @@ func (docker Docker) Build(ctx context.Context, archive source.Archive) (Image, 
 	if _, err := exec.LookPath(command); err != nil {
 		return Image{}, &diag.Error{
 			Code:    "runtime_unavailable",
-			Summary: "Shed builds locally with Docker, and Docker was not found.",
+			Summary: "shed deploy --local builds the project in Docker, and Docker was not found.",
 			Facts:   []diag.Fact{{Label: "Looked for", Value: command + " on PATH"}},
 			Hints: []string{
-				"Install or start Docker, then run the command again",
+				"Deploy to the Shed cloud instead, which needs no Docker: shed deploy",
+				"Or install or start Docker, then run the command again",
 				"Or package the project without building it: shed deploy --mock",
 			},
 			Cause: err,

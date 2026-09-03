@@ -78,8 +78,8 @@ func (a *App) printWelcome() {
 	_, _ = fmt.Fprintln(a.stdout)
 	_, _ = fmt.Fprintln(a.stdout, style.Strong("Start here:"))
 	_, _ = fmt.Fprint(a.stdout, `  shed init      Look at this project and write `+clispec.DefinitionFileName+`
-  shed deploy    Build this project and run it locally
-  shed login     Sign in to deploy to the cloud
+  shed login     Sign in to Shed
+  shed deploy    Send this project to the cloud; --local runs it here in Docker
   shed help      Every command, option, and agent contract
 
 Nothing was inspected: Shed reads a project only when you ask it to.

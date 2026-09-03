@@ -41,10 +41,11 @@ func (docker Docker) Start(ctx context.Context, instanceID, imageID, imageDigest
 	if _, err := exec.LookPath(command); err != nil {
 		return Instance{}, &diag.Error{
 			Code:    "runtime_unavailable",
-			Summary: "Shed runs projects locally with Docker, and Docker was not found.",
+			Summary: "shed deploy --local runs the project in Docker, and Docker was not found.",
 			Facts:   []diag.Fact{{Label: "Looked for", Value: command + " on PATH"}},
 			Hints: []string{
-				"Install or start Docker, then run the command again",
+				"Deploy to the Shed cloud instead, which needs no Docker: shed deploy",
+				"Or install or start Docker, then run the command again",
 				"Or package the project without running it: shed deploy --mock",
 			},
 			Cause: err,
