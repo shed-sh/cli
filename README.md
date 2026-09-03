@@ -13,29 +13,22 @@ Docs live at [shed.codes](https://shed.codes).
 ## Installation
 
 ```sh
-# YOLO — CLI and the agent skill
+# shed
 curl -fsSL https://raw.githubusercontent.com/shed-sh/cli/main/install.sh | sh
+npx @shed-sh/shed
 
-# CLI only
-curl -fsSL https://raw.githubusercontent.com/shed-sh/cli/main/install-cli.sh | sh
-
-# Skill only (Claude Code, Cursor, Codex, …)
+# skill, this machine
 curl -fsSL https://raw.githubusercontent.com/shed-sh/cli/main/install-skills.sh | sh
+npx @shed-sh/skills
 
-# npm
-npm install -g @shed-sh/shed          # global
-npm install -D @shed-sh/shed          # pin in a project
-
-# macOS and Linux
-brew install shed-sh/tap/shed
-
-# Arch
-paru -S shed-bin
+# skill, this project
+curl -fsSL https://raw.githubusercontent.com/shed-sh/cli/main/install-skills.sh | sh -s -- --local
+npx @shed-sh/skills --local
 ```
 
-The YOLO script installs both halves. The binary lands in `~/.local/bin` (override with `--bin-dir <dir>`; pin with `--version <v>`). The skill script clones one canonical copy into `~/.shed/skills` and symlinks it into every agent on the machine; git is its only requirement, and rerunning it updates all of them at once.
+`install.sh` / `npx @shed-sh/shed` only install the CLI (override the destination with `--bin-dir <dir>`; pin with `--version <v>`). `npm install -g @shed-sh/shed` puts `shed` on PATH. Update any time with `shed upgrade`.
 
-macOS and Linux, Intel and Apple silicon. Update any time with `shed upgrade`. The same install scripts are served at [shed.codes](https://shed.codes).
+The skill is a separate package. `--global` (the default) copies one copy into `~/.shed/skills` and symlinks it into every coding agent on the machine. `--local` copies it into this project's `.claude/skills/shed`, so the skill travels with the repo. The same scripts are served at [shed.codes](https://shed.codes).
 
 ## Start a project
 
@@ -84,7 +77,7 @@ shed deploy . --dry-run --archive app.tar.gz  # inspect what would ship
 
 ## The agent skill
 
-The skill in [`skills/shed`](skills/shed) teaches an agent to write a clean `SHED.yaml` or Starlark `SHED`, deploy, read shed's structured errors, and debug ignore rules. It follows the [Agent Skills](https://skills.sh) specification, so one installed copy serves every agent you use. Claude Code users can also install it as a plugin:
+The skill in [`skills/shed`](skills/shed) teaches an agent to write a clean `SHED.yaml` or Starlark `SHED`, deploy, read shed's structured errors, and debug ignore rules. It follows the [Agent Skills](https://skills.sh) specification. Install it for this machine or this project (see Installation). Claude Code users can also install it as a plugin:
 
 ```
 /plugin marketplace add shed-sh/cli
@@ -113,6 +106,7 @@ shed help --output json
 | `internal/` | Packaging, build, deploy, auth, and the SHED evaluators. |
 | `internal/e2e` | Golden-path tests that spawn the real `shed` binary. |
 | `skills/shed` | The agent skill and its references (partly generated; see below). |
+| `packages/skills` | The `@shed-sh/skills` npm package (`npx @shed-sh/skills`). |
 | `install.sh`, `install-cli.sh`, `install-skills.sh` | The install scripts served at shed.codes and via GitHub raw. |
 | `docs/` | Design and protocol documentation. |
 | `third_party/railpack` | Vendored [Railpack](https://github.com/railwayapp/railpack) (its own MIT license), which powers project detection. |

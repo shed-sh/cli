@@ -15,9 +15,19 @@ Shed is agent-first: it never prompts except `shed login`, and every command sup
 
 ```
 curl -fsSL shed.codes/install.sh | sh
+npx @shed-sh/shed
 ```
 
-That installs both the CLI and this skill. One half at a time: `shed.codes/install-cli.sh` or `shed.codes/install-skills.sh`, piped to `sh` the same way. The CLI alone also ships as `npm i -g @shed-sh/shed` (bun reads the same registry), `brew install shed-sh/tap/shed`, and `paru -S shed-bin`. The skill script clones one canonical copy into `~/.shed/skills` and symlinks it into every coding agent on the machine; rerun it to update.
+That installs the CLI, or runs it once via npx without putting it on PATH. `npm i -g @shed-sh/shed` (bun reads the same registry) is the persistent npm install. The skill is a separate package:
+
+```
+curl -fsSL shed.codes/install-skills.sh | sh                 # this machine
+npx @shed-sh/skills
+curl -fsSL shed.codes/install-skills.sh | sh -s -- --local   # this project
+npx @shed-sh/skills --local
+```
+
+`--global` (the default) clones one copy into `~/.shed/skills` and symlinks it into every coding agent on the machine. `--local` copies it into `.claude/skills/shed` so the project carries the skill. git is the only requirement; rerun to update.
 
 Requires Docker running for local builds. `--mock` skips Docker for packaging tests.
 
