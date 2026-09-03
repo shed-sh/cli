@@ -16,7 +16,7 @@ import "strings"
 // DefinitionFileName mirrors definition.ManifestFileName. It is duplicated here
 // to keep this package a leaf, and TestDefinitionFileNameMatchesManifest pins
 // the two together.
-const DefinitionFileName = "SHED.yaml"
+const DefinitionFileName = "SHED.hcl"
 
 // Kind is a flag's value type. It doubles as the type name reported in JSON.
 type Kind string
@@ -89,7 +89,10 @@ type Command struct {
 	// Usage is the positional part shown in help, e.g. "[directory]".
 	Usage   string
 	Summary string
-	Flags   []Flag
+	// Description says what the command does with what it is given, in a
+	// short paragraph, for commands whose one-line Summary cannot carry it.
+	Description string
+	Flags       []Flag
 	// Exclusive lists flag groups of which at most one may be active. A bool
 	// counts as active when true; any other flag counts when explicitly given.
 	Exclusive [][]string

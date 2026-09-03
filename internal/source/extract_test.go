@@ -14,6 +14,7 @@ func TestExtractVerifiesAndMaterializesSelfContainedArchive(t *testing.T) {
 	manifest := definition.Manifest{
 		APIVersion: definition.ManifestAPIVersion,
 		Kind:       definition.ManifestKind,
+		Metadata:   &definition.ManifestMetadata{Name: "app"},
 		Content:    definition.ManifestContent{Include: []string{"main.py"}},
 		Build:      definition.ManifestBuild{Image: "python:3.13"},
 		Run:        definition.ManifestRun{Command: []string{"python", "main.py"}, Port: 8000},

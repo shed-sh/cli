@@ -2,11 +2,11 @@
 
 # The Starlark `{{ .FileName }}` file — full reference
 
-`{{ .FileName }}` (no extension, project root) is the authored alternative to `SHED.yaml`: a Starlark program that evaluates to the exact same manifest. It is an authoring format only — evaluation happens before packaging, the archive embeds the evaluated result, and the `{{ .FileName }}` file itself is structurally excluded from content. The builder, archive, digests, and remote protocol never see the program.
+`{{ .FileName }}` (no extension, project root) is the authored alternative to `SHED.hcl`: a Starlark program that evaluates to the exact same manifest. It is an authoring format only — evaluation happens before packaging, the archive embeds the evaluated result, and the `{{ .FileName }}` file itself is structurally excluded from content. The builder, archive, digests, and remote protocol never see the program.
 
 Every signature, argument, type, and default below is rendered from the same spec tables the evaluator validates calls with, so this file cannot promise an argument the binary rejects. Run `shed schema --output json` for the same contract as machine-readable JSON.
 
-Resolution precedence: a `{{ .FileName }}` program is evaluated when present; otherwise `SHED.yaml` is parsed; otherwise detection scaffolds one. Both files present is a `definition_conflict` error — delete one; whichever remains decides the build.
+Resolution precedence: a `{{ .FileName }}` program is evaluated when present; otherwise `SHED.hcl` is parsed; otherwise detection scaffolds one. Both files present is a `definition_conflict` error — delete one; whichever remains decides the build.
 
 `shed init --format shed` writes a starting file. `shed check` validates edits and reports **every** problem in one pass, not just the first.
 
@@ -59,7 +59,7 @@ Only the functions below are defined. Any other name — `param()`, `worker()`, 
 
 ## `srcs` and the collector universe
 
-`glob()` and literal `srcs` lists both resolve against the **collector universe**: the files shed would actually package, after `.gitignore`/`.shedignore` and the structural excludes (`.git`, `node_modules`, `dist`, `target`, `.env*`, `*.pem`, `*.key`, `*.log`, `{{ .FileName }}`, `SHED.yaml`, …). Ignored and secret files are excluded *before* matching, so they can never be selected.
+`glob()` and literal `srcs` lists both resolve against the **collector universe**: the files shed would actually package, after `.gitignore`/`.shedignore` and the structural excludes (`.git`, `node_modules`, `dist`, `target`, `.env*`, `*.pem`, `*.key`, `*.log`, `{{ .FileName }}`, `SHED.hcl`, …). Ignored and secret files are excluded *before* matching, so they can never be selected.
 
 - Glob results are sorted, so evaluation is deterministic. An invalid pattern is `invalid_pattern`.
 - A literal entry that names no collected file or directory is `unknown_src`, with a did-you-mean suggestion.
@@ -75,11 +75,11 @@ The file is Starlark, so ordinary program shapes work: variables, `def` function
 - `load()` is not supported — the file is self-contained.
 - Evaluation is step-capped, so a pathological loop fails instead of hanging a deploy.
 
-Not yet supported (stated by the tool itself in errors, the schema, and the generated header): {{ .NotYetSupported }}. The remote-builder `base`/`parts`/`apps` projection cannot be expressed here — keep `SHED.yaml` if you deploy one of those.
+Not yet supported (stated by the tool itself in errors, the schema, and the generated header): {{ .NotYetSupported }}. The remote-builder `base`/`parts`/`apps` projection cannot be expressed here — keep `SHED.hcl` if you deploy one of those.
 
 ## What evaluation produces
 
-The single `http_app()` lowers into the same manifest `SHED.yaml` declares directly:
+The single `http_app()` lowers into the same manifest `SHED.hcl` declares directly:
 
 - `srcs` → `content.include`, sorted and deduplicated.
 - `PORT` is injected into `environment` from `port` when absent.
@@ -117,6 +117,6 @@ On success: `outcome: "valid"` plus the evaluated `application`, so you can conf
 | `invalid_name` | `name` is not a lowercase DNS label of ≤30 characters |
 | `evaluation_error` | a genuine Starlark runtime error, e.g. an out-of-range index |
 | `invalid_definition` | the lowered manifest fails validation, e.g. overlapping `srcs` paths |
-| `definition_conflict` | both `{{ .FileName }}` and `SHED.yaml` exist in the project |
+| `definition_conflict` | both `{{ .FileName }}` and `SHED.hcl` exist in the project |
 
 Source of truth at runtime: `shed schema --output json` prints the API from the same tables that validate calls, and `shed check --output json` reports what the binary in front of you actually accepts — both always win over this document.

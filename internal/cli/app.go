@@ -397,7 +397,7 @@ func (a *App) schema(_ context.Context, b *clispec.Binding) error {
 
 // definitionReport is what `shed init` returns. It is deliberately descriptive:
 // an agent reading the JSON should learn what was detected and what will run
-// without having to know the SHED.yaml schema, while `application` stays the
+// without having to know the SHED.hcl schema, while `application` stays the
 // authoritative copy for anything that does.
 type definitionReport struct {
 	Type          string              `json:"type"`

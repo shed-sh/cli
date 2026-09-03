@@ -20,11 +20,17 @@ type DefinitionGenerator interface {
 type GenerationInput struct {
 	Files []string
 	Build *core.BuildResult
+	// Name is what the application block is called. SHED.hcl cannot be
+	// written without one, so a generation that leaves it empty yields a
+	// manifest with no Source; the caller names it and encodes.
+	Name string
 }
 
 type GeneratedDefinition struct {
 	Manifest Manifest `json:"manifest"`
-	YAML     []byte   `json:"-"`
+	// Source is the manifest as SHED.hcl bytes: what init writes and what
+	// the archive embeds. Empty when the manifest has no name yet.
+	Source []byte `json:"-"`
 	// Provider is the Railpack family this definition was lowered from. It is
 	// empty for a definition that was loaded from disk rather than detected,
 	// because an existing file is authoritative and is never redetected.
@@ -124,11 +130,20 @@ func (RailpackGenerator) Generate(input GenerationInput) (GeneratedDefinition, e
 		Parts: recipe.parts,
 		Apps:  recipe.apps,
 	}
-	yamlData, err := manifest.Marshal()
-	if err != nil {
+	if input.Name != "" {
+		manifest.Metadata = &ManifestMetadata{Name: input.Name}
+	}
+	generated := GeneratedDefinition{Manifest: manifest, Provider: provider}
+	if manifest.Metadata == nil {
+		if err := manifest.Validate(); err != nil {
+			return GeneratedDefinition{}, err
+		}
+		return generated, nil
+	}
+	if generated.Source, err = manifest.Marshal(); err != nil {
 		return GeneratedDefinition{}, err
 	}
-	return GeneratedDefinition{Manifest: manifest, YAML: yamlData, Provider: provider}, nil
+	return generated, nil
 }
 
 func lowerNode(input GenerationInput) (lowering, error) {

@@ -64,19 +64,20 @@ func TestProjectDetectionAndPlanEndToEnd(t *testing.T) {
 			generated, err := (definition.RailpackGenerator{}).Generate(definition.GenerationInput{
 				Files: files,
 				Build: result,
+				Name:  definition.SanitizeProjectName(testCase.name),
 			})
 			if !testCase.packageable {
 				if err == nil {
 					t.Fatal("unsupported detected variant unexpectedly generated an executable definition")
 				}
 			} else if err != nil {
-				t.Fatalf("generate SHED.yaml: %v", err)
+				t.Fatalf("generate %s: %v", definition.ManifestFileName, err)
 			}
 			if testCase.packageable {
 				archive, err := source.Prepare(
 					filepath.Join(fixtureRoot, testCase.name),
 					filepath.Join(t.TempDir(), testCase.name+".tar.gz"),
-					generated.YAML,
+					generated.Source,
 					generated.Manifest.Content.Include...,
 				)
 				if err != nil {

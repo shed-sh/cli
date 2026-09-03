@@ -8,7 +8,7 @@ Report vulnerabilities privately through [GitHub security advisories](https://gi
 
 Knowing the trust model helps aim a report.
 
-The project directory is semi-trusted. `shed deploy` executes the build recipe a `SHED.yaml`/`SHED` file declares; that is its job, like `make`. But the declared fields must be the only channel. The Starlark evaluator exposes no filesystem, network, or subprocess access, packaging refuses symlinks so a repo cannot pull in files outside itself, and archive extraction validates entry names and accepts regular files only. A repo that achieves anything its manifest doesn't declare is a vulnerability.
+The project directory is semi-trusted. `shed deploy` executes the build recipe a `SHED.hcl`/`SHED` file declares; that is its job, like `make`. But the declared fields must be the only channel. The Starlark evaluator exposes no filesystem, network, or subprocess access, packaging refuses symlinks so a repo cannot pull in files outside itself, and archive extraction validates entry names and accepts regular files only. A repo that achieves anything its manifest doesn't declare is a vulnerability.
 
 The control plane is authenticated but its content is not trusted. Responses from the Shed backend are parsed defensively, and tokens are keyed to the API URL in the OS keyring and never logged.
 

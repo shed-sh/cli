@@ -35,9 +35,11 @@ The skill is a separate package. `--global` (the default) copies one copy into `
 ```sh
 cd your-app
 shed login         # opens a browser; the one interactive command
-shed init          # reads the project, writes SHED.yaml
+shed init          # reads the project, writes SHED.hcl
 shed deploy .      # builds on Shed, hands back a live URL
 ```
+
+`shed deploy` works from one definition. If `SHED.hcl` (or a Starlark `SHED`) is in the directory, it is used exactly as written and never regenerated. If neither is there, Shed detects the software — Node.js, Next.js, or a Go module — and generates the same definition in memory for that deploy alone; nothing is written to your project. `shed init` is how you keep one to read, edit, and commit. Either way the archive Shed ships carries the definition, and that archive is what gets built and run.
 
 Follow a long build with `shed status <deployment> --wait`. Fetch logs with `shed logs <deployment>`.
 
@@ -51,20 +53,24 @@ This is optional. The local run packages the same deterministic archive, builds 
 
 ## Author the definition
 
-Everything Shed builds comes from `SHED.yaml` (or its Starlark form, `SHED`). Nothing on your machine leaks into the build, so a deploy that works on your laptop behaves the same anywhere else.
+Everything Shed builds comes from `SHED.hcl` (or its Starlark form, `SHED`). It is one `application` block: what to ship, how to build it, how to run it. Nothing on your machine leaks into the build, so a deploy that works on your laptop behaves the same anywhere else.
 
-```yaml
-apiVersion: shed.run/v1alpha1
-kind: Application
-content:
-  include: [package.json, package-lock.json, server.js]
-build:
-  image: node:24
-  commands:
-    - [npm, ci]
-run:
-  command: [node, server.js]
-  port: 8080
+```hcl
+application "my-app" {
+  content {
+    include = ["package.json", "package-lock.json", "server.js"]
+  }
+
+  build {
+    image    = "node:24"
+    commands = [["npm", "ci"]]
+  }
+
+  run {
+    command = ["node", "server.js"]
+    port    = 8080
+  }
+}
 ```
 
 While authoring, ask shed instead of guessing:
@@ -77,7 +83,7 @@ shed deploy . --dry-run --archive app.tar.gz  # inspect what would ship
 
 ## The agent skill
 
-The skill in [`skills/shed`](skills/shed) teaches an agent to write a clean `SHED.yaml` or Starlark `SHED`, deploy, read shed's structured errors, and debug ignore rules. It follows the [Agent Skills](https://skills.sh) specification. Install it for this machine or this project (see Installation). Claude Code users can also install it as a plugin:
+The skill in [`skills/shed`](skills/shed) teaches an agent to write a clean `SHED.hcl` or Starlark `SHED`, deploy, read shed's structured errors, and debug ignore rules. It follows the [Agent Skills](https://skills.sh) specification. Install it for this machine or this project (see Installation). Claude Code users can also install it as a plugin:
 
 ```
 /plugin marketplace add shed-sh/cli

@@ -13,7 +13,7 @@ func TestErrorReportsOnlyTheSummarySoMachineOutputStaysOneLine(t *testing.T) {
 		Code:    "unsupported_project",
 		Summary: "Detected Go, which Shed cannot build automatically yet.",
 		Facts:   []Fact{{Label: "Supported", Value: "Node.js"}},
-		Hints:   []string{"Write SHED.yaml by hand"},
+		Hints:   []string{"Write SHED.hcl by hand"},
 	}
 
 	if got := failure.Error(); got != failure.Summary {
@@ -43,7 +43,7 @@ func TestRenderWritesSummaryEvidenceAndNextSteps(t *testing.T) {
 	Render(&output, &Error{
 		Summary: "Detected Go, which Shed cannot build automatically yet.",
 		Facts:   []Fact{{Label: "Supported", Value: "Node.js"}, {Label: "Directory", Value: "/tmp/app"}},
-		Hints:   []string{"Write SHED.yaml by hand", "Then run: shed deploy"},
+		Hints:   []string{"Write SHED.hcl by hand", "Then run: shed deploy"},
 	})
 
 	want := "Detected Go, which Shed cannot build automatically yet.\n" +
@@ -52,7 +52,7 @@ func TestRenderWritesSummaryEvidenceAndNextSteps(t *testing.T) {
 		"  Directory  /tmp/app\n" +
 		"\n" +
 		"Next steps:\n" +
-		"  Write SHED.yaml by hand\n" +
+		"  Write SHED.hcl by hand\n" +
 		"  Then run: shed deploy\n"
 	if output.String() != want {
 		t.Fatalf("Render() =\n%s\nwant\n%s", output.String(), want)
@@ -68,7 +68,7 @@ func TestRenderEmitsNoEscapeSequencesOffTerminal(t *testing.T) {
 		Code:    "unsupported_project",
 		Summary: "Detected Go, which Shed cannot build automatically yet.",
 		Facts:   []Fact{{Label: "Supported", Value: "Node.js"}},
-		Hints:   []string{"Write SHED.yaml by hand"},
+		Hints:   []string{"Write SHED.hcl by hand"},
 	})
 
 	if strings.ContainsRune(output.String(), '\x1b') {

@@ -27,7 +27,7 @@ func TestRailpackGeneratorProducesCompleteDeterministicManifest(t *testing.T) {
 			"node": {Name: "node", ResolvedVersion: &version},
 		},
 	}
-	input := GenerationInput{Files: []string{"app/page.tsx", "next.config.mjs", "package.json", "pnpm-lock.yaml", "public/logo.svg"}, Build: result}
+	input := GenerationInput{Files: []string{"app/page.tsx", "next.config.mjs", "package.json", "pnpm-lock.yaml", "public/logo.svg"}, Build: result, Name: "site"}
 	first, err := (RailpackGenerator{}).Generate(input)
 	if err != nil {
 		t.Fatal(err)
@@ -36,8 +36,8 @@ func TestRailpackGeneratorProducesCompleteDeterministicManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(first.YAML, second.YAML) {
-		t.Fatalf("generated YAML is not deterministic:\n%s\n%s", first.YAML, second.YAML)
+	if !bytes.Equal(first.Source, second.Source) {
+		t.Fatalf("generated %s is not deterministic:\n%s\n%s", ManifestFileName, first.Source, second.Source)
 	}
 	if first.Manifest.Build.Image != "node:24" || first.Manifest.Run.Port != 3000 {
 		t.Fatalf("definition = %#v", first.Manifest)
@@ -53,16 +53,75 @@ func TestRailpackGeneratorProducesCompleteDeterministicManifest(t *testing.T) {
 	if len(first.Manifest.Build.Commands) != 3 || first.Manifest.Build.Commands[2][2] != "build" {
 		t.Fatalf("build commands = %#v", first.Manifest.Build.Commands)
 	}
-	if !strings.Contains(string(first.YAML), "apiVersion: shed.run/v1alpha1") {
-		t.Fatalf("generated YAML = %s", first.YAML)
+	source := string(first.Source)
+	if !strings.HasPrefix(source, `application "site" {`) {
+		t.Fatalf("generated %s = %s", ManifestFileName, source)
 	}
-	if !strings.Contains(string(first.YAML), "base: node-24") ||
-		!strings.Contains(string(first.YAML), "parts:") ||
-		!strings.Contains(string(first.YAML), "apps:") {
-		t.Fatalf("generated YAML lacks remote builder recipe: %s", first.YAML)
+	if !strings.Contains(source, `base = "node-24"`) ||
+		!strings.Contains(source, `part "app" {`) ||
+		!strings.Contains(source, `app "web" {`) {
+		t.Fatalf("generated %s lacks remote builder recipe: %s", ManifestFileName, source)
 	}
-	if _, err := ParseManifest(first.YAML); err != nil {
+	reparsed, err := ParseManifest(first.Source)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(reparsed, first.Manifest) {
+		t.Fatalf("%s does not round-trip:\n%#v\n%#v", ManifestFileName, reparsed, first.Manifest)
+	}
+}
+
+// A generation without a name is a manifest that cannot be written yet: the
+// caller names it, and Source stays empty until then.
+func TestGenerateWithoutANameLeavesSourceEmpty(t *testing.T) {
+	_, input := goBuildResult("1.24", "go.mod", "cmd/server/main.go")
+	generated, err := (RailpackGenerator{}).Generate(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if generated.Manifest.Metadata != nil || generated.Source != nil {
+		t.Fatalf("generated = %#v", generated)
+	}
+	if _, err := generated.Manifest.Marshal(); err == nil {
+		t.Fatal("a nameless manifest marshalled")
+	}
+}
+
+// The file is strict: an attribute the schema does not declare, a second
+// application block, or a shell string where argv belongs all fail to parse,
+// and every failure names the file.
+func TestParseManifestRejectsWhatTheSchemaDoesNotDeclare(t *testing.T) {
+	valid := `application "api" {
+  content {
+    include = ["main.go", "go.mod"]
+  }
+  build {
+    image = "golang:1.26"
+  }
+  run {
+    command = ["./out"]
+    port    = 8080
+  }
+}
+`
+	if _, err := ParseManifest([]byte(valid)); err != nil {
+		t.Fatalf("a valid file failed: %v", err)
+	}
+	for name, mutate := range map[string]func(string) string{
+		"unknown attribute": func(s string) string { return strings.Replace(s, "port    = 8080", "port = 8080\n    ports = 1", 1) },
+		"unknown block":     func(s string) string { return strings.Replace(s, "  run {", "  static {}\n  run {", 1) },
+		"shell command":     func(s string) string { return strings.Replace(s, `command = ["./out"]`, `command = "./out"`, 1) },
+		"two applications":  func(s string) string { return s + valid },
+		"bad name":          func(s string) string { return strings.Replace(s, `"api"`, `"Not Valid"`, 1) },
+		"no name":           func(s string) string { return strings.Replace(s, `application "api" {`, `application {`, 1) },
+		"yaml":              func(string) string { return "apiVersion: shed.run/v1alpha1\nkind: Application\n" },
+	} {
+		_, err := ParseManifest([]byte(mutate(valid)))
+		if err == nil {
+			t.Errorf("%s: parsed without error", name)
+		} else if !strings.Contains(err.Error(), ManifestFileName) && !strings.Contains(err.Error(), "name") {
+			t.Errorf("%s: error does not name the file: %v", name, err)
+		}
 	}
 }
 

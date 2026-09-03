@@ -176,7 +176,7 @@ func TestInitWritesAndThenValidatesDefinition(t *testing.T) {
 	if exit := app.Run(context.Background(), []string{"init", root}); exit != 0 {
 		t.Fatalf("exit=%d stderr=%s", exit, stderr.String())
 	}
-	if _, err := os.Stat(filepath.Join(root, "SHED.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, "SHED.hcl")); err != nil {
 		t.Fatal(err)
 	}
 	stdout.Reset()
@@ -320,7 +320,7 @@ func TestBareInvocationExplainsItselfWithoutInspecting(t *testing.T) {
 	}
 	// A deployable project sits in the working directory. Nothing may be
 	// packaged, built, or written until the user names a command.
-	if _, err := os.Stat(filepath.Join(root, "SHED.yaml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, "SHED.hcl")); !os.IsNotExist(err) {
 		t.Fatalf("bare invocation touched the project: %v", err)
 	}
 }
@@ -682,8 +682,8 @@ func TestInitShedFormatRoundTrips(t *testing.T) {
 	if initResult["outcome"] != "created" || !strings.HasSuffix(initResult["path"].(string), "SHED") {
 		t.Fatalf("init = %#v", initResult)
 	}
-	if _, err := os.Stat(filepath.Join(root, "SHED.yaml")); !os.IsNotExist(err) {
-		t.Fatalf("SHED.yaml should not exist: %v", err)
+	if _, err := os.Stat(filepath.Join(root, "SHED.hcl")); !os.IsNotExist(err) {
+		t.Fatalf("SHED.hcl should not exist: %v", err)
 	}
 
 	stdout.Reset()

@@ -12,8 +12,8 @@ direction beyond it.
 
 ## 1. Origin
 
-Shed already has a definition file: `SHED.yaml`. It is a strict, declarative
-manifest that produces a deterministic, content-addressed archive; the builder,
+Shed already has a definition file: `SHED.hcl`. It is a strict, declarative
+HCL manifest that produces a deterministic, content-addressed archive; the builder,
 the archive, the digests, and the deploy protocol all consume it and are
 indifferent to how it was produced. That indifference is the opening: an
 authored program that *evaluates* to the same manifest can add composition and
@@ -22,7 +22,7 @@ reuse without touching anything downstream.
 `SHED` — no extension, an application definition first and a Starlark program
 second — is that program. It is authoring-only. Determinism, idempotency, and
 the remote protocol are unaffected by construction: the evaluator lowers to
-`definition.Manifest`, the same shape `SHED.yaml` declares directly, and
+`definition.Manifest`, the same shape `SHED.hcl` declares directly, and
 everything past that boundary sees identical bytes.
 
 Today the surface is deliberately tiny: three builtins — `build`, `http_app`,
@@ -357,7 +357,7 @@ Flux and every serious GitOps stack landed on.
 
 ### 6.1 Model
 
-A sidecar file next to `SHED.yaml` — `.shed.secrets.yaml` — sops-encrypted,
+A sidecar file next to `SHED.hcl` — `.shed.secrets.yaml` — sops-encrypted,
 committed. Keys stay readable so `git diff` is meaningful; values are
 ciphertext:
 

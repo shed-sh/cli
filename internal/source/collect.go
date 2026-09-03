@@ -1,6 +1,8 @@
 package source
 
 import (
+	"shed/internal/definition"
+
 	"bufio"
 	"fmt"
 	"io/fs"
@@ -66,7 +68,7 @@ var structurallyExcludedDirectories = map[string]struct{}{
 }
 
 var structurallyExcludedFiles = map[string]struct{}{
-	".DS_Store": {}, ".git": {}, "SHED": {}, "SHED.yaml": {}, SourceManifestFileName: {},
+	".DS_Store": {}, ".git": {}, "SHED": {}, definition.ManifestFileName: {}, SourceManifestFileName: {},
 	".npmrc": {}, ".pypirc": {}, "credentials.json": {},
 }
 

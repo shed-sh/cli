@@ -2,7 +2,7 @@
 
 # shed
 
-> Help end-users of the `shed` CLI install it, describe an app in a clean `SHED.yaml` (or Starlark `SHED`), and deploy it — to the Shed cloud by default, or locally in Docker with `--local`.
+> Help end-users of the `shed` CLI install it, describe an app in a clean `SHED.hcl` (or Starlark `SHED`), and deploy it — to the Shed cloud by default, or locally in Docker with `--local`.
 
 This file is the complete shed documentation in one place, for use as model context.
 
@@ -12,7 +12,7 @@ This file is the complete shed documentation in one place, for use as model cont
 
 Shed packages an app into a deterministic `tar.gz`, builds it, and runs it — on the Shed cloud by default, or locally in Docker with `--local`.
 
-The whole thing is driven by one file at the project root: **`SHED.yaml`** (declarative) or **`SHED`** (Starlark that evaluates to the same shape). `shed init` writes one for you; from then on it is authoritative — shed never regenerates or heals it.
+The whole thing is driven by one file at the project root: **`SHED.hcl`** (declarative HCL) or **`SHED`** (Starlark that evaluates to the same shape). `shed init` writes one for you; from then on it is authoritative — shed never regenerates or heals it. Without one, `shed deploy` detects the project and generates the same definition in memory for that deploy alone; it never writes it.
 
 Shed is agent-first: it never prompts except `shed login`, and every command supports `--output json` / `--output ndjson` with a stable failure envelope. Prefer JSON whenever you invoke shed programmatically.
 
@@ -41,7 +41,7 @@ Verify with `shed version`. Sign in with `shed login` before deploying.
 ## The three commands you actually run
 
 ```
-shed init              # detect the project and write SHED.yaml
+shed init              # detect the project and write SHED.hcl
 shed deploy .          # package → submit to the Shed cloud (`shed .` is shorthand; needs `shed login`)
 shed deploy . --local  # package → build → run here, in Docker
 ```
@@ -52,7 +52,7 @@ Everything else operates on the deployment id or instance id printed by `deploy`
 | Command | Purpose |
 |---|---|
 | `shed deploy [directory]` | Send the project to the Shed cloud, or build and run it here with --local |
-| `shed init [directory]` | Look at the project and write SHED.yaml, or SHED with --format shed |
+| `shed init [directory]` | Look at the project and write SHED.hcl, or SHED with --format shed |
 | `shed check [directory]` | Evaluate the definition and report every problem in it |
 | `shed schema` | Print the SHED file API |
 | `shed status <deployment>` | Show, or wait for, a deployment's state |
@@ -73,42 +73,49 @@ Everything else operates on the deployment id or instance id printed by `deploy`
 
 At runtime, prefer `shed help <command>` and `shed help --output json` over guessing — they come from the binary in front of you and always win over anything written here.
 
-## A clean `SHED.yaml`
+## A clean `SHED.hcl`
 
-`SHED.yaml` describes, compactly, **what to ship, how to build it, and how to run it**. Every field below is real; nothing is optional-looking-required.
+`SHED.hcl` describes, compactly, **what to ship, how to build it, and how to run it**. It is one `application` block; the label is the name, and there is no version or kind header. Every field below is real; nothing is optional-looking-required.
 
-```yaml
-apiVersion: shed.run/v1alpha1        # required, exact
-kind: Application                    # required, exact
-metadata:
-  name: my-app                       # DNS label: ^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])?$
-content:
-  include:                           # required, non-empty; paths shed will package
-    - package.json
-    - package-lock.json
-    - server.js
-build:
-  image: node:24                     # any Docker image ref
-  commands:                          # argv arrays — NO SHELL
-    - [npm, ci]
-    - [npm, run, build]
-run:
-  command: [node, server.js]         # required, non-empty argv
-  port: 8080                         # 1..65535; app must actually listen on it
-  workingDirectory: /app             # optional
-  environment:                       # optional
-    LOG_LEVEL: info
+```hcl
+application "my-app" {               # the label is the name: DNS label, ^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])?$
+  content {
+    include = [                      # required, non-empty; paths shed will package
+      "package.json",
+      "package-lock.json",
+      "server.js",
+    ]
+  }
+
+  build {
+    image = "node:24"                # any Docker image ref
+    commands = [                     # argv lists — NO SHELL
+      ["npm", "ci"],
+      ["npm", "run", "build"],
+    ]
+  }
+
+  run {
+    command           = ["node", "server.js"]   # required, non-empty argv
+    port              = 8080                    # 1..65535; app must actually listen on it
+    working_directory = "/app"                  # optional
+    environment = {                             # optional; values are strings
+      LOG_LEVEL = "info"
+    }
+  }
+}
 ```
 
-A real, working Go example lives at this repo's own `SHED.yaml`.
+A real, working Go example lives at this repo's own `SHED.hcl`.
 
 Rules that trip people up:
 
-- **Unknown top-level fields are rejected.** Typos fail loudly.
+- **Unknown attributes and blocks are rejected.** Typos fail loudly.
+- **Exactly one `application` block, and it needs its label.** `application {` without a name does not parse.
 - **`content.include` is a whitelist.** Only these paths are packaged. Entries must be relative, no `.`/`..`/absolute, and **no overlap** (`a` and `a/b` together is an error).
 - **No shell in commands.** Each command is argv (a list). `;`, `|`, `&`, `<`, `>`, `$`, backtick are rejected. If you truly need a shell: `[sh, -lc, "cmd1 && cmd2"]`.
 - **Port must be real.** The container must actually listen on `run.port` (or `$PORT` when Railpack sets it), or the readiness check fails.
-- **Structural excludes always apply** — `.git`, `node_modules`, `.next`, `dist`, `target`, `.env*`, `*.pem`, `*.key`, `*.log`, `SHED.yaml` itself, etc. — even if you put them in `include`. This is a hard rule to prevent secret leaks; do not try to bypass it.
+- **Structural excludes always apply** — `.git`, `node_modules`, `.next`, `dist`, `target`, `.env*`, `*.pem`, `*.key`, `*.log`, `SHED.hcl` itself, etc. — even if you put them in `include`. This is a hard rule to prevent secret leaks; do not try to bypass it.
 
 Full schema (including the `base` / `parts` / `apps` remote-builder projection) in `references/schema.md`.
 
@@ -126,7 +133,7 @@ b = build(
 http_app(name = "my-app", build = b, cmd = ["./out"], port = 8080)
 ```
 
-Rules that trip people up: every argument is named (only `glob`'s patterns may be positional); `build()` must be assigned to a variable, never written inline; commands are argv lists, never shell strings; `PORT` is injected from `port` when absent. Never have both `SHED` and `SHED.yaml` — that's a `definition_conflict` error.
+Rules that trip people up: every argument is named (only `glob`'s patterns may be positional); `build()` must be assigned to a variable, never written inline; commands are argv lists, never shell strings; `PORT` is injected from `port` when absent. Never have both `SHED` and `SHED.hcl` — that's a `definition_conflict` error.
 
 Full builtin signatures, the language subset, and every diagnostic code in `references/starlark.md`; `shed schema` prints the same API from the binary itself.
 
@@ -144,9 +151,11 @@ shed schema                  # the Starlark `SHED` API
 ## Deploy: cloud (the default)
 
 1. `cd` into the app root.
-2. `shed init --output json` — writes `SHED.yaml`. The `definitionReport` in the JSON shows detected provider, includes, builds, run command, and whether the port is `assumed` or `declared`.
+2. `shed init --output json` — writes `SHED.hcl`. The `definitionReport` in the JSON shows detected provider, includes, builds, run command, and whether the port is `assumed` or `declared`.
 3. Review the file. From here it is authoritative — delete it to redetect.
 4. `shed deploy . --output json` — packages and submits it. Returns a ready URL, or a `"pending"` receipt after 30s (see below).
+
+What `deploy` does with the directory: if `SHED.hcl` or `SHED` exists it is used exactly as written. If neither exists, shed detects the project and generates the definition in memory for that deploy only — the project is not written to; step 2 is how you keep one. Either way the archive it ships carries the definition.
 
 ```
 shed login                                    # opens a browser; the code comes back on its own (only interactive command)
@@ -175,7 +184,7 @@ tar -tzf /tmp/app.tar.gz
 
 `shed init` only detects **Node.js / Next.js** (npm, pnpm, yarn — lockfile required) and **Go modules** (root `go.mod`). Anything else — Python, Ruby, Bun, static SPAs, Rust, workspaces-only Go — errors with `unsupported_project`.
 
-For those, **hand-author `SHED.yaml`**. The executor is provider-neutral: any Docker image + argv works.
+For those, **hand-author `SHED.hcl`**. The executor is provider-neutral: any Docker image + argv works.
 
 ## Reading errors
 
@@ -189,7 +198,7 @@ Every failure in `--output json` mode:
 
 | Code | Meaning / fix |
 |---|---|
-| `unsupported_project` | Railpack detected the language but shed doesn't autogenerate for it. Hand-author `SHED.yaml`. |
+| `unsupported_project` | Railpack detected the language but shed doesn't autogenerate for it. Hand-author `SHED.hcl`. |
 | `detection_failed` | Railpack couldn't identify the app. Add a lockfile / `go.mod`, or hand-author. |
 | `missing_package_json` / `missing_lockfile` | Node project without `package.json` or one of `package-lock.json` / `npm-shrinkwrap.json` / `yarn.lock` / `pnpm-lock.yaml` / `bun.lock(b)`. |
 | `missing_go_mod` | Go project without a root `go.mod`. Workspaces-only won't work. |
@@ -225,18 +234,18 @@ Debug ignores with `shed deploy . --dry-run --output json` and read `source.mani
 
 - Do not write shell operators (`&&`, `|`, `;`, `$VAR`, backticks) inside `build.commands` or `run.command` entries. Use `[sh, -lc, "..."]` if you truly need a shell.
 - Do not put `.env`, `*.pem`, `*.key`, `node_modules`, `.git` in `content.include` — they are silently stripped.
-- Do not edit `SHED.yaml` and re-run `shed init` expecting a merge. `init` only writes when the file is missing.
+- Do not edit `SHED.hcl` and re-run `shed init` expecting a merge. `init` only writes when the file is missing.
 - Do not write a `static:` workload — validation rejects it. Serve static files with a real server in `run.command`.
 - Do not claim a remote deployment succeeded unless shed printed a ready URL. If `--remote` failed or is `pending`, say so and resume with `shed status <id> --wait`.
 
 ## When this isn't enough
 
 - `references/commands.md` — every subcommand and flag, generated from the CLI's own registry.
-- `references/schema.md` — full `SHED.yaml` schema including the remote-builder projection.
+- `references/schema.md` — full `SHED.hcl` schema including the remote-builder projection.
 - `references/starlark.md` — full Starlark `SHED` reference: builtins, call rules, language subset, diagnostic codes.
 - `references/errors.md` — full error code table with source-of-truth file paths.
 - `shed help --output json` at runtime — authoritative over anything written here.
-- This repo's own `SHED.yaml` — a live, working Go example.
+- This repo's own `SHED.hcl` — a live, working Go example.
 
 ---
 
@@ -244,11 +253,11 @@ Debug ignores with `shed deploy . --dry-run --output json` and read `source.mani
 
 # The Starlark `SHED` file — full reference
 
-`SHED` (no extension, project root) is the authored alternative to `SHED.yaml`: a Starlark program that evaluates to the exact same manifest. It is an authoring format only — evaluation happens before packaging, the archive embeds the evaluated result, and the `SHED` file itself is structurally excluded from content. The builder, archive, digests, and remote protocol never see the program.
+`SHED` (no extension, project root) is the authored alternative to `SHED.hcl`: a Starlark program that evaluates to the exact same manifest. It is an authoring format only — evaluation happens before packaging, the archive embeds the evaluated result, and the `SHED` file itself is structurally excluded from content. The builder, archive, digests, and remote protocol never see the program.
 
 Every signature, argument, type, and default below is rendered from the same spec tables the evaluator validates calls with, so this file cannot promise an argument the binary rejects. Run `shed schema --output json` for the same contract as machine-readable JSON.
 
-Resolution precedence: a `SHED` program is evaluated when present; otherwise `SHED.yaml` is parsed; otherwise detection scaffolds one. Both files present is a `definition_conflict` error — delete one; whichever remains decides the build.
+Resolution precedence: a `SHED` program is evaluated when present; otherwise `SHED.hcl` is parsed; otherwise detection scaffolds one. Both files present is a `definition_conflict` error — delete one; whichever remains decides the build.
 
 `shed init --format shed` writes a starting file. `shed check` validates edits and reports **every** problem in one pass, not just the first.
 
@@ -325,7 +334,7 @@ Select source files by pattern from the files Shed collects. Ignored and secret 
 
 ## `srcs` and the collector universe
 
-`glob()` and literal `srcs` lists both resolve against the **collector universe**: the files shed would actually package, after `.gitignore`/`.shedignore` and the structural excludes (`.git`, `node_modules`, `dist`, `target`, `.env*`, `*.pem`, `*.key`, `*.log`, `SHED`, `SHED.yaml`, …). Ignored and secret files are excluded *before* matching, so they can never be selected.
+`glob()` and literal `srcs` lists both resolve against the **collector universe**: the files shed would actually package, after `.gitignore`/`.shedignore` and the structural excludes (`.git`, `node_modules`, `dist`, `target`, `.env*`, `*.pem`, `*.key`, `*.log`, `SHED`, `SHED.hcl`, …). Ignored and secret files are excluded *before* matching, so they can never be selected.
 
 - Glob results are sorted, so evaluation is deterministic. An invalid pattern is `invalid_pattern`.
 - A literal entry that names no collected file or directory is `unknown_src`, with a did-you-mean suggestion.
@@ -341,11 +350,11 @@ The file is Starlark, so ordinary program shapes work: variables, `def` function
 - `load()` is not supported — the file is self-contained.
 - Evaluation is step-capped, so a pathological loop fails instead of hanging a deploy.
 
-Not yet supported (stated by the tool itself in errors, the schema, and the generated header): param(), worker(), static_site(), multiple apps, detect(), load(), build-time env. The remote-builder `base`/`parts`/`apps` projection cannot be expressed here — keep `SHED.yaml` if you deploy one of those.
+Not yet supported (stated by the tool itself in errors, the schema, and the generated header): param(), worker(), static_site(), multiple apps, detect(), load(), build-time env. The remote-builder `base`/`parts`/`apps` projection cannot be expressed here — keep `SHED.hcl` if you deploy one of those.
 
 ## What evaluation produces
 
-The single `http_app()` lowers into the same manifest `SHED.yaml` declares directly:
+The single `http_app()` lowers into the same manifest `SHED.hcl` declares directly:
 
 - `srcs` → `content.include`, sorted and deduplicated.
 - `PORT` is injected into `environment` from `port` when absent.
@@ -383,46 +392,39 @@ On success: `outcome: "valid"` plus the evaluated `application`, so you can conf
 | `invalid_name` | `name` is not a lowercase DNS label of ≤30 characters |
 | `evaluation_error` | a genuine Starlark runtime error, e.g. an out-of-range index |
 | `invalid_definition` | the lowered manifest fails validation, e.g. overlapping `srcs` paths |
-| `definition_conflict` | both `SHED` and `SHED.yaml` exist in the project |
+| `definition_conflict` | both `SHED` and `SHED.hcl` exist in the project |
 
 Source of truth at runtime: `shed schema --output json` prints the API from the same tables that validate calls, and `shed check --output json` reports what the binary in front of you actually accepts — both always win over this document.
 
 ---
 
-# `SHED.yaml` full schema
+# `SHED.hcl` full schema
 
-Unknown top-level fields are rejected — decoding is strict. Once `SHED.yaml` exists, shed loads it and never regenerates or repairs it; delete the file to redetect.
+`SHED.hcl` is one `application` block. The block type is the document kind and the label is the application's name — there is no version or kind header to write. Decoding is strict: an attribute or block the schema does not declare is an error, so typos fail loudly. Once `SHED.hcl` exists, shed loads it and never regenerates or repairs it; delete the file to redetect.
 
-## Header (always required)
+## `application "<name>"` (required, exactly one)
 
-```yaml
-apiVersion: shed.run/v1alpha1
-kind: Application
+```hcl
+application "my-app" {
+  content { … }
+  build   { … }
+  run     { … }
+}
 ```
 
-Both values are matched exactly.
-
-## `metadata` (optional)
-
-```yaml
-metadata:
-  name: my-app     # DNS label, ≤30 chars: ^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])?$
-```
-
-If omitted, the directory basename is sanitized to a DNS label. The 30-char cap mirrors a server-side budget — don't raise it.
+- The label is the name: a DNS label of at most 30 characters, `^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])?$`. `shed init` derives it from the directory name. The 30-char cap mirrors a server-side budget — don't raise it.
+- `content`, `build`, and `run` are each required exactly once.
 
 ## `content` (required)
 
-```yaml
-content:
-  include:
-    - package.json
-    - src
-    - public/logo.png
+```hcl
+content {
+  include = ["package.json", "src", "public/logo.png"]
+}
 ```
 
 Rules:
-- Non-empty list.
+- `include` is a non-empty list of strings.
 - Each entry is a normalized relative path.
 - Rejected: empty string, `.`, `..`, absolute paths, backslash, NUL byte.
 - No overlap: `a` and `a/b` in the same list is a validation error.
@@ -433,149 +435,162 @@ Rules:
 | Kind | Names |
 |---|---|
 | Directories | `.shed`, `.git`, `.next`, `.turbo`, `coverage`, `dist`, `node_modules`, `__pycache__`, `.venv`, `target` |
-| Files | `.DS_Store`, `SHED`, `SHED.yaml`, `.shed-source.json`, `.npmrc`, `.pypirc`, `credentials.json` |
+| Files | `.DS_Store`, `SHED`, `SHED.hcl`, `.shed-source.json`, `.npmrc`, `.pypirc`, `credentials.json` |
 | Globs | `.env*`, `*.pem`, `*.key`, `*.log` |
 
 `.gitignore` and `.shedignore` are also honored. Any pattern containing `/` is anchored to the project root; patterns with no `/` match a path segment anywhere.
 
 ## `build` (required)
 
-```yaml
-build:
-  image: node:24
-  commands:
-    - [npm, ci]
-    - [npm, run, build]
+```hcl
+build {
+  image = "node:24"
+  commands = [
+    ["npm", "ci"],
+    ["npm", "run", "build"],
+  ]
+}
 ```
 
 - `image`: single-line Docker image reference; any registry.
-- `commands`: optional; each is an argv array — no shell. Empty arg strings and NUL bytes are rejected. Characters `;` `|` `&` `<` `>` `$` and backtick are refused (they imply a shell you don't have). To use a shell, spell it: `[sh, -lc, "a && b"]`.
+- `commands`: optional; a list of argv lists — no shell. Empty arg strings and NUL bytes are rejected. Characters `;` `|` `&` `<` `>` `$` and backtick are refused (they imply a shell you don't have). To use a shell, spell it: `["sh", "-lc", "a && b"]`.
 
 ## `run` (required)
 
-```yaml
-run:
-  command: [node, dist/server.js]
-  port: 8080
-  workingDirectory: /app
-  user: "1000:1000"
-  environment:
-    LOG_LEVEL: info
-    DATABASE_URL: postgres://…
-  stopSignal: SIGTERM
+```hcl
+run {
+  command           = ["node", "dist/server.js"]
+  port              = 8080
+  working_directory = "/app"
+  user              = "1000:1000"
+  environment = {
+    LOG_LEVEL    = "info"
+    DATABASE_URL = "postgres://…"
+  }
+  stop_signal = "SIGTERM"
+}
 ```
 
-- `command`: non-empty argv (same rules as build commands).
+- `command`: non-empty argv list (same rules as build commands).
 - `port`: integer, 1..65535. **Assumed 8080** by autogeneration unless the Railpack plan set `PORT`; the app must actually listen on that port (or on `$PORT`) for the readiness probe to pass.
-- `workingDirectory`, `user`, `stopSignal`: optional passthroughs.
-- `environment`: `map[string]string`; keys are non-empty, no `=`, no NUL. Values are passed through unchanged.
+- `working_directory`, `user`, `stop_signal`: optional passthroughs.
+- `environment`: an object of string values; keys are non-empty, no `=`, no NUL. Values are passed through unchanged. Quote numbers: `PORT = "8080"`.
 
 ## `base` (optional — remote-builder projection)
 
 Emitted only for the currently trusted catalog (today: Node 24 + pnpm). Users typically do not write this by hand.
 
-```yaml
-base: node-24-pnpm
+```hcl
+base = "node-24"
 ```
 
-## `parts` (optional — remote-builder projection)
+## `part "<name>"` (optional — remote-builder projection)
 
-```yaml
-parts:
-  app:
-    plugin: node          # or nextjs
-    source: "."
-    dependencies:
-      manager: pnpm       # npm | yarn | pnpm | bun
-      inputs:
-        - package.json
-        - pnpm-lock.yaml
-    stage:
-      - src
-      - public
-    prime:
-      - src
+```hcl
+part "app" {
+  plugin = "node"          # or "nextjs"
+  source = "."
+  stage  = ["src", "public"]
+  prime  = ["src"]
+
+  dependencies {
+    manager = "pnpm"       # npm | yarn | pnpm | bun
+    inputs  = ["package.json", "pnpm-lock.yaml"]
+  }
+}
 ```
 
-Auto-emitted by `shed init` for Node projects that match the trusted catalog. Hand-authoring is possible but rarely needed.
+Auto-emitted by `shed init` for Node projects that match the trusted catalog. Hand-authoring is possible but rarely needed. Each `part` label must be unique.
 
-## `apps` (optional — remote-builder projection)
+## `app "<name>"` (optional — remote-builder projection)
 
-```yaml
-apps:
-  web:
-    command: [node]
-    args: [dist/server.js]
-    working-directory: /app
-    user: "1000:1000"
-    environment:
-      PORT: "8080"
-    ports:
-      - "8080/tcp"
-    stop-signal: SIGTERM
+```hcl
+app "web" {
+  command           = ["node"]
+  args              = ["dist/server.js"]
+  working_directory = "/app"
+  user              = "1000:1000"
+  environment = {
+    PORT = "8080"
+  }
+  ports       = ["8080/tcp"]
+  stop_signal = "SIGTERM"
+}
 ```
 
-A hand-authored `SHED.yaml` describes exactly one workload, via `run:`.
+A hand-authored `SHED.hcl` describes exactly one workload, via `run`.
 
 ## `static` (not supported)
 
-A `static:` workload with `directory`, `index`, and `fallback` is not accepted — validation rejects it. Serve static files with a real server in `run.command` instead.
+A `static` block with `directory`, `index`, and `fallback` is not accepted — decoding rejects it as an unknown block. Serve static files with a real server in `run.command` instead.
 
 ## Minimal working examples
 
 Node/Express:
 
-```yaml
-apiVersion: shed.run/v1alpha1
-kind: Application
-content:
-  include: [package.json, package-lock.json, server.js]
-build:
-  image: node:24
-  commands:
-    - [npm, ci]
-run:
-  command: [node, server.js]
-  port: 8080
+```hcl
+application "hello-express" {
+  content {
+    include = ["package.json", "package-lock.json", "server.js"]
+  }
+
+  build {
+    image    = "node:24"
+    commands = [["npm", "ci"]]
+  }
+
+  run {
+    command = ["node", "server.js"]
+    port    = 8080
+  }
+}
 ```
 
-Go (matches the shed repo's own SHED.yaml):
+Go (matches the shed repo's own SHED.hcl):
 
-```yaml
-apiVersion: shed.run/v1alpha1
-kind: Application
-metadata:
-  name: shed
-content:
-  include: [cmd, internal, go.mod, go.sum]
-build:
-  image: golang:1.26
-  commands:
-    - [go, build, -o, out, ./cmd/shed]
-run:
-  command: [./out]
-  port: 8080
-  environment:
-    PORT: "8080"
-  stopSignal: SIGTERM
+```hcl
+application "shed" {
+  content {
+    include = ["cmd", "internal", "go.mod", "go.sum"]
+  }
+
+  build {
+    image    = "golang:1.26"
+    commands = [["go", "build", "-o", "out", "./cmd/shed"]]
+  }
+
+  run {
+    command = ["./out"]
+    port    = 8080
+    environment = {
+      PORT = "8080"
+    }
+    stop_signal = "SIGTERM"
+  }
+}
 ```
 
 Python (hand-authored — outside autogeneration scope):
 
-```yaml
-apiVersion: shed.run/v1alpha1
-kind: Application
-content:
-  include: [app.py, requirements.txt]
-build:
-  image: python:3.12-slim
-  commands:
-    - [pip, install, --no-cache-dir, -r, requirements.txt]
-run:
-  command: [python, app.py]
-  port: 8080
-  environment:
-    PORT: "8080"
+```hcl
+application "hello-python" {
+  content {
+    include = ["app.py", "requirements.txt"]
+  }
+
+  build {
+    image    = "python:3.12-slim"
+    commands = [["pip", "install", "--no-cache-dir", "-r", "requirements.txt"]]
+  }
+
+  run {
+    command = ["python", "app.py"]
+    port    = 8080
+    environment = {
+      PORT = "8080"
+    }
+  }
+}
 ```
 
 ---
@@ -613,7 +628,7 @@ Run `shed help --output json` for the same contract as machine-readable JSON.
 | Command | Purpose |
 |---|---|
 | `shed deploy [directory]` | Send the project to the Shed cloud, or build and run it here with --local |
-| `shed init [directory]` | Look at the project and write SHED.yaml, or SHED with --format shed |
+| `shed init [directory]` | Look at the project and write SHED.hcl, or SHED with --format shed |
 | `shed check [directory]` | Evaluate the definition and report every problem in it |
 | `shed schema` | Print the SHED file API |
 | `shed status <deployment>` | Show, or wait for, a deployment's state |
@@ -636,6 +651,8 @@ Run `shed help --output json` for the same contract as machine-readable JSON.
 ### `shed deploy [directory]`
 
 Send the project to the Shed cloud, or build and run it here with --local.
+
+Deploy looks at the directory and works from one definition. If SHED.hcl or a Starlark SHED file is there, it is used exactly as written and never regenerated. If neither exists, Shed detects the software (Node.js, Next.js, or a Go module) and generates a definition for this deploy only; nothing is written to the project, shed init is what keeps one. Either way the result is packaged into a deterministic archive that carries the definition, and that archive is what gets built and run.
 
 | Flag | Type | Default | Purpose |
 |---|---|---|---|
@@ -665,14 +682,16 @@ shed deploy . --dry-run --archive app.tar.gz   # Package it and look inside
 
 ### `shed init [directory]`
 
-Look at the project and write SHED.yaml, or SHED with --format shed.
+Look at the project and write SHED.hcl, or SHED with --format shed.
+
+Init detects the software in the directory and writes the definition deploy would otherwise generate on the fly, so it can be read, edited, and committed. If SHED.hcl or SHED already exists it is validated and left alone; delete it to detect again.
 
 | Flag | Type | Default | Purpose |
 |---|---|---|---|
-| `--format yaml\|shed` | string | `yaml` | Definition format to write |
+| `--format hcl\|shed` | string | `hcl` | Definition format to write |
 | `--output human\|json` | string | `human` | Choose the output format |
 
-Wrong argument count returns `usage: shed init [directory] [--format yaml|shed] [--output human|json]`.
+Wrong argument count returns `usage: shed init [directory] [--format hcl|shed] [--output human|json]`.
 
 ### `shed check [directory]`
 
@@ -874,12 +893,12 @@ Every failure in `--output json` mode has this envelope:
 
 | Code | Meaning | Fix |
 |---|---|---|
-| `detection_failed` | Railpack could not identify the project type. | Add a lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`) or `go.mod`. Or hand-author `SHED.yaml`. |
-| `unsupported_project` | Railpack identified the type, but shed does not autogenerate for it (today: Python, Ruby, Bun, static, Deno, Elixir, PHP, Rust, shell, Go workspaces). | Hand-author `SHED.yaml`. The executor is provider-neutral. |
+| `detection_failed` | Railpack could not identify the project type. | Add a lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`) or `go.mod`. Or hand-author `SHED.hcl`. |
+| `unsupported_project` | Railpack identified the type, but shed does not autogenerate for it (today: Python, Ruby, Bun, static, Deno, Elixir, PHP, Rust, shell, Go workspaces). | Hand-author `SHED.hcl`. The executor is provider-neutral. |
 | `missing_package_json` | Node detection ran but `package.json` is missing. | Add one, or hand-author. |
 | `missing_lockfile` | Node project without a supported lockfile. | Commit `package-lock.json` / `npm-shrinkwrap.json` / `yarn.lock` / `pnpm-lock.yaml` / `bun.lock(b)`. |
 | `missing_go_mod` | Go project without a root `go.mod` (workspaces-only). | Add a root `go.mod` or hand-author. |
-| `no_build_command` | The plan produced no build step (rare). | Add a `build.commands` entry in hand-authored `SHED.yaml`. |
+| `no_build_command` | The plan produced no build step (rare). | Add a `build.commands` entry in hand-authored `SHED.hcl`. |
 
 ### Invocation
 
@@ -916,7 +935,7 @@ Error: could not detect a supported project
 
 Next steps:
   • Add a lockfile (package-lock.json, pnpm-lock.yaml, or yarn.lock)
-  • Or hand-author SHED.yaml — the executor is provider-neutral
+  • Or hand-author SHED.hcl — the executor is provider-neutral
 ```
 
 - Bold summary line.

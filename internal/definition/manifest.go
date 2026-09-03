@@ -1,7 +1,6 @@
 package definition
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"path"
@@ -9,13 +8,17 @@ import (
 	"sort"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/hashicorp/hcl/v2/gohcl"
+	"github.com/hashicorp/hcl/v2/hclparse"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/zclconf/go-cty/cty"
 )
 
 const (
 	ManifestAPIVersion = "shed.run/v1alpha1"
 	ManifestKind       = "Application"
-	ManifestFileName   = "SHED.yaml"
+	ManifestFileName   = "SHED.hcl"
 )
 
 // WorkloadKind is the shed's workload identity as the control plane names it.
@@ -33,20 +36,25 @@ func (m Manifest) BundleKind() string {
 
 // Manifest is the complete, portable contract between project detection and
 // execution. Builders must not infer anything from the original source tree.
+//
+// On disk it is SHED.hcl: one `application "<name>" { … }` block. The block
+// type is the document kind and the label is the name, so APIVersion, Kind,
+// and Metadata carry no attributes of their own in the file; the parser fills
+// them in, and the JSON form (the wire contract) still spells them out.
 type Manifest struct {
-	APIVersion string                  `yaml:"apiVersion" json:"apiVersion"`
-	Kind       string                  `yaml:"kind" json:"kind"`
-	Metadata   *ManifestMetadata       `yaml:"metadata,omitempty" json:"metadata,omitempty"`
-	Content    ManifestContent         `yaml:"content" json:"content"`
-	Build      ManifestBuild           `yaml:"build" json:"build"`
-	Run        ManifestRun             `yaml:"run" json:"run"`
-	Base       string                  `yaml:"base,omitempty" json:"base,omitempty"`
-	Parts      map[string]ManifestPart `yaml:"parts,omitempty" json:"parts,omitempty"`
-	Apps       map[string]ManifestApp  `yaml:"apps,omitempty" json:"apps,omitempty"`
+	APIVersion string                  `json:"apiVersion"`
+	Kind       string                  `json:"kind"`
+	Metadata   *ManifestMetadata       `json:"metadata,omitempty"`
+	Content    ManifestContent         `json:"content"`
+	Build      ManifestBuild           `json:"build"`
+	Run        ManifestRun             `json:"run"`
+	Base       string                  `json:"base,omitempty"`
+	Parts      map[string]ManifestPart `json:"parts,omitempty"`
+	Apps       map[string]ManifestApp  `json:"apps,omitempty"`
 }
 
 type ManifestMetadata struct {
-	Name string `yaml:"name" json:"name"`
+	Name string `json:"name"`
 }
 
 // Project names become hostname segments composed with a deployment
@@ -63,21 +71,21 @@ func ValidProjectName(name string) bool {
 }
 
 type ManifestContent struct {
-	Include []string `yaml:"include" json:"include"`
+	Include []string `json:"include"`
 }
 
 type ManifestBuild struct {
-	Image    string     `yaml:"image" json:"image"`
-	Commands [][]string `yaml:"commands,omitempty" json:"commands,omitempty"`
+	Image    string     `json:"image"`
+	Commands [][]string `json:"commands,omitempty"`
 }
 
 type ManifestRun struct {
-	Command          []string          `yaml:"command" json:"command"`
-	WorkingDirectory string            `yaml:"workingDirectory,omitempty" json:"workingDirectory,omitempty"`
-	User             string            `yaml:"user,omitempty" json:"user,omitempty"`
-	Environment      map[string]string `yaml:"environment,omitempty" json:"environment,omitempty"`
-	Port             int               `yaml:"port" json:"port"`
-	StopSignal       string            `yaml:"stopSignal,omitempty" json:"stopSignal,omitempty"`
+	Command          []string          `json:"command"`
+	WorkingDirectory string            `json:"workingDirectory,omitempty"`
+	User             string            `json:"user,omitempty"`
+	Environment      map[string]string `json:"environment,omitempty"`
+	Port             int               `json:"port"`
+	StopSignal       string            `json:"stopSignal,omitempty"`
 }
 
 // ManifestPart and ManifestApp are the trusted remote-builder projection of
@@ -85,44 +93,228 @@ type ManifestRun struct {
 // builder owns base/parts/apps. Keeping both in one generated document lets
 // every consumer parse only its section without redetecting the source tree.
 type ManifestPart struct {
-	Plugin       string               `yaml:"plugin" json:"plugin"`
-	Source       string               `yaml:"source" json:"source"`
-	Dependencies ManifestDependencies `yaml:"dependencies" json:"dependencies"`
-	Stage        []string             `yaml:"stage" json:"stage"`
-	Prime        []string             `yaml:"prime" json:"prime"`
+	Plugin       string               `json:"plugin"`
+	Source       string               `json:"source"`
+	Dependencies ManifestDependencies `json:"dependencies"`
+	Stage        []string             `json:"stage"`
+	Prime        []string             `json:"prime"`
 }
 
 type ManifestDependencies struct {
-	Manager string   `yaml:"manager" json:"manager"`
-	Inputs  []string `yaml:"inputs" json:"inputs"`
+	Manager string   `json:"manager"`
+	Inputs  []string `json:"inputs"`
 }
 
 type ManifestApp struct {
-	Command          []string          `yaml:"command" json:"command"`
-	Args             []string          `yaml:"args,omitempty" json:"args,omitempty"`
-	WorkingDirectory string            `yaml:"working-directory,omitempty" json:"workingDirectory,omitempty"`
-	User             string            `yaml:"user,omitempty" json:"user,omitempty"`
-	Environment      map[string]string `yaml:"environment,omitempty" json:"environment,omitempty"`
-	Ports            []string          `yaml:"ports,omitempty" json:"ports,omitempty"`
-	StopSignal       string            `yaml:"stop-signal,omitempty" json:"stopSignal,omitempty"`
+	Command          []string          `json:"command"`
+	Args             []string          `json:"args,omitempty"`
+	WorkingDirectory string            `json:"workingDirectory,omitempty"`
+	User             string            `json:"user,omitempty"`
+	Environment      map[string]string `json:"environment,omitempty"`
+	Ports            []string          `json:"ports,omitempty"`
+	StopSignal       string            `json:"stopSignal,omitempty"`
 }
 
+// The hcl* types are the file's shape as gohcl decodes it. They exist apart
+// from Manifest so the on-disk spelling (snake_case attributes, labeled
+// blocks) can differ from the wire spelling (camelCase JSON) without either
+// leaking into the other. gohcl is strict: an attribute or block the schema
+// does not declare is a diagnostic, which is what makes typos fail loudly.
+type hclFile struct {
+	Applications []hclApplication `hcl:"application,block"`
+}
+
+type hclApplication struct {
+	Name    string     `hcl:"name,label"`
+	Content hclContent `hcl:"content,block"`
+	Build   hclBuild   `hcl:"build,block"`
+	Run     hclRun     `hcl:"run,block"`
+	Base    string     `hcl:"base,optional"`
+	Parts   []hclPart  `hcl:"part,block"`
+	Apps    []hclApp   `hcl:"app,block"`
+}
+
+type hclContent struct {
+	Include []string `hcl:"include"`
+}
+
+type hclBuild struct {
+	Image    string     `hcl:"image"`
+	Commands [][]string `hcl:"commands,optional"`
+}
+
+type hclRun struct {
+	Command          []string          `hcl:"command"`
+	Port             int               `hcl:"port"`
+	WorkingDirectory string            `hcl:"working_directory,optional"`
+	User             string            `hcl:"user,optional"`
+	Environment      map[string]string `hcl:"environment,optional"`
+	StopSignal       string            `hcl:"stop_signal,optional"`
+}
+
+type hclPart struct {
+	Name         string          `hcl:"name,label"`
+	Plugin       string          `hcl:"plugin"`
+	Source       string          `hcl:"source"`
+	Dependencies hclDependencies `hcl:"dependencies,block"`
+	Stage        []string        `hcl:"stage"`
+	Prime        []string        `hcl:"prime"`
+}
+
+type hclDependencies struct {
+	Manager string   `hcl:"manager"`
+	Inputs  []string `hcl:"inputs"`
+}
+
+type hclApp struct {
+	Name             string            `hcl:"name,label"`
+	Command          []string          `hcl:"command"`
+	Args             []string          `hcl:"args,optional"`
+	WorkingDirectory string            `hcl:"working_directory,optional"`
+	User             string            `hcl:"user,optional"`
+	Environment      map[string]string `hcl:"environment,optional"`
+	Ports            []string          `hcl:"ports,optional"`
+	StopSignal       string            `hcl:"stop_signal,optional"`
+}
+
+func (file hclFile) manifest() (Manifest, error) {
+	if len(file.Applications) != 1 {
+		return Manifest{}, fmt.Errorf("%s must declare exactly one application block, found %d", ManifestFileName, len(file.Applications))
+	}
+	app := file.Applications[0]
+	manifest := Manifest{
+		APIVersion: ManifestAPIVersion,
+		Kind:       ManifestKind,
+		Metadata:   &ManifestMetadata{Name: app.Name},
+		Content:    ManifestContent{Include: app.Content.Include},
+		Build:      ManifestBuild{Image: app.Build.Image, Commands: app.Build.Commands},
+		Run: ManifestRun{
+			Command:          app.Run.Command,
+			WorkingDirectory: app.Run.WorkingDirectory,
+			User:             app.Run.User,
+			Environment:      app.Run.Environment,
+			Port:             app.Run.Port,
+			StopSignal:       app.Run.StopSignal,
+		},
+		Base: app.Base,
+	}
+	if len(app.Parts) > 0 {
+		manifest.Parts = make(map[string]ManifestPart, len(app.Parts))
+		for _, part := range app.Parts {
+			if _, duplicate := manifest.Parts[part.Name]; duplicate {
+				return Manifest{}, fmt.Errorf("part %q is declared twice", part.Name)
+			}
+			manifest.Parts[part.Name] = ManifestPart{
+				Plugin:       part.Plugin,
+				Source:       part.Source,
+				Dependencies: ManifestDependencies{Manager: part.Dependencies.Manager, Inputs: part.Dependencies.Inputs},
+				Stage:        part.Stage,
+				Prime:        part.Prime,
+			}
+		}
+	}
+	if len(app.Apps) > 0 {
+		manifest.Apps = make(map[string]ManifestApp, len(app.Apps))
+		for _, application := range app.Apps {
+			if _, duplicate := manifest.Apps[application.Name]; duplicate {
+				return Manifest{}, fmt.Errorf("app %q is declared twice", application.Name)
+			}
+			manifest.Apps[application.Name] = ManifestApp{
+				Command:          application.Command,
+				Args:             application.Args,
+				WorkingDirectory: application.WorkingDirectory,
+				User:             application.User,
+				Environment:      application.Environment,
+				Ports:            application.Ports,
+				StopSignal:       application.StopSignal,
+			}
+		}
+	}
+	return manifest, nil
+}
+
+// Marshal renders the manifest as SHED.hcl. The output is canonical: the same
+// manifest always produces the same bytes, which is what lets the archive's
+// embedded copy take part in the content digest.
 func (m Manifest) Marshal() ([]byte, error) {
 	if err := m.Validate(); err != nil {
 		return nil, err
 	}
-	data, err := yaml.Marshal(m)
-	if err != nil {
-		return nil, fmt.Errorf("encode %s: %w", ManifestFileName, err)
+	if m.Metadata == nil {
+		return nil, fmt.Errorf("encode %s: the application block needs a name", ManifestFileName)
 	}
-	return data, nil
+	file := hclwrite.NewEmptyFile()
+	app := file.Body().AppendNewBlock("application", []string{m.Metadata.Name}).Body()
+
+	content := app.AppendNewBlock("content", nil).Body()
+	content.SetAttributeRaw("include", stringListTokens(m.Content.Include))
+
+	app.AppendNewline()
+	build := app.AppendNewBlock("build", nil).Body()
+	build.SetAttributeValue("image", cty.StringVal(m.Build.Image))
+	if len(m.Build.Commands) > 0 {
+		build.SetAttributeRaw("commands", commandListTokens(m.Build.Commands))
+	}
+
+	app.AppendNewline()
+	run := app.AppendNewBlock("run", nil).Body()
+	run.SetAttributeRaw("command", stringListTokens(m.Run.Command))
+	run.SetAttributeValue("port", cty.NumberIntVal(int64(m.Run.Port)))
+	setOptionalString(run, "working_directory", m.Run.WorkingDirectory)
+	setOptionalString(run, "user", m.Run.User)
+	setOptionalMap(run, "environment", m.Run.Environment)
+	setOptionalString(run, "stop_signal", m.Run.StopSignal)
+
+	if m.Base != "" {
+		app.AppendNewline()
+		app.SetAttributeValue("base", cty.StringVal(m.Base))
+	}
+	for _, name := range sortedKeys(m.Parts) {
+		part := m.Parts[name]
+		app.AppendNewline()
+		body := app.AppendNewBlock("part", []string{name}).Body()
+		body.SetAttributeValue("plugin", cty.StringVal(part.Plugin))
+		body.SetAttributeValue("source", cty.StringVal(part.Source))
+		body.SetAttributeRaw("stage", stringListTokens(part.Stage))
+		body.SetAttributeRaw("prime", stringListTokens(part.Prime))
+		body.AppendNewline()
+		dependencies := body.AppendNewBlock("dependencies", nil).Body()
+		dependencies.SetAttributeValue("manager", cty.StringVal(part.Dependencies.Manager))
+		dependencies.SetAttributeRaw("inputs", stringListTokens(part.Dependencies.Inputs))
+	}
+	for _, name := range sortedKeys(m.Apps) {
+		application := m.Apps[name]
+		app.AppendNewline()
+		body := app.AppendNewBlock("app", []string{name}).Body()
+		body.SetAttributeRaw("command", stringListTokens(application.Command))
+		if len(application.Args) > 0 {
+			body.SetAttributeRaw("args", stringListTokens(application.Args))
+		}
+		setOptionalString(body, "working_directory", application.WorkingDirectory)
+		setOptionalString(body, "user", application.User)
+		setOptionalMap(body, "environment", application.Environment)
+		if len(application.Ports) > 0 {
+			body.SetAttributeRaw("ports", stringListTokens(application.Ports))
+		}
+		setOptionalString(body, "stop_signal", application.StopSignal)
+	}
+	return hclwrite.Format(file.Bytes()), nil
 }
 
+// ParseManifest decodes SHED.hcl. Decoding is strict — an attribute or block
+// the schema does not know is an error, not a silent no-op — and the result
+// passes the same validation Marshal applies.
 func ParseManifest(data []byte) (Manifest, error) {
-	var manifest Manifest
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(&manifest); err != nil {
+	file, diags := hclparse.NewParser().ParseHCL(data, ManifestFileName)
+	if diags.HasErrors() {
+		return Manifest{}, fmt.Errorf("decode %s: %w", ManifestFileName, diags)
+	}
+	var parsed hclFile
+	if diags := gohcl.DecodeBody(file.Body, nil, &parsed); diags.HasErrors() {
+		return Manifest{}, fmt.Errorf("decode %s: %w", ManifestFileName, diags)
+	}
+	manifest, err := parsed.manifest()
+	if err != nil {
 		return Manifest{}, fmt.Errorf("decode %s: %w", ManifestFileName, err)
 	}
 	if err := manifest.Validate(); err != nil {
@@ -139,7 +331,7 @@ func (m Manifest) Validate() error {
 		return fmt.Errorf("kind must be %q", ManifestKind)
 	}
 	if m.Metadata != nil && !projectNamePattern.MatchString(m.Metadata.Name) {
-		return errors.New("metadata.name must be a lowercase DNS label of at most 30 characters")
+		return errors.New("the application name must be a lowercase DNS label of at most 30 characters")
 	}
 	if len(m.Content.Include) == 0 {
 		return errors.New("content.include must not be empty")
@@ -165,13 +357,13 @@ func (m Manifest) Validate() error {
 	// directives, so a line break in any of them would smuggle in extra
 	// directives that no field of the manifest declares.
 	if strings.ContainsAny(m.Run.WorkingDirectory, "\r\n\x00") {
-		return errors.New("run.workingDirectory must be a single-line path")
+		return errors.New("run.working_directory must be a single-line path")
 	}
 	if strings.ContainsAny(m.Run.User, " \t\r\n\x00") {
 		return errors.New("run.user must be a single-line user or user:group reference")
 	}
 	if strings.ContainsAny(m.Run.StopSignal, " \t\r\n\x00") {
-		return errors.New("run.stopSignal must be a single signal name")
+		return errors.New("run.stop_signal must be a single signal name")
 	}
 	for key, value := range m.Run.Environment {
 		if key == "" || strings.ContainsAny(key, "= \t\r\n\x00") || strings.ContainsRune(value, '\x00') {
@@ -210,4 +402,70 @@ func validatePathSet(values []string) error {
 		}
 	}
 	return nil
+}
+
+// Rendering helpers. hclwrite prints every list on one line; past a few
+// entries that stops being readable, so longer lists get one entry per line.
+// Format() then takes care of the indentation.
+
+const inlineListLimit = 3
+
+func setOptionalString(body *hclwrite.Body, name, value string) {
+	if value != "" {
+		body.SetAttributeValue(name, cty.StringVal(value))
+	}
+}
+
+func setOptionalMap(body *hclwrite.Body, name string, values map[string]string) {
+	if len(values) == 0 {
+		return
+	}
+	entries := make(map[string]cty.Value, len(values))
+	for key, value := range values {
+		entries[key] = cty.StringVal(value)
+	}
+	body.SetAttributeValue(name, cty.ObjectVal(entries))
+}
+
+func stringListTokens(values []string) hclwrite.Tokens {
+	items := make([]hclwrite.Tokens, len(values))
+	for index, value := range values {
+		items[index] = hclwrite.TokensForValue(cty.StringVal(value))
+	}
+	return listTokens(items, len(values) > inlineListLimit)
+}
+
+func commandListTokens(commands [][]string) hclwrite.Tokens {
+	items := make([]hclwrite.Tokens, len(commands))
+	for index, command := range commands {
+		items[index] = stringListTokens(command)
+	}
+	return listTokens(items, true)
+}
+
+func listTokens(items []hclwrite.Tokens, multiline bool) hclwrite.Tokens {
+	tokens := hclwrite.Tokens{{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")}}
+	if multiline {
+		tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
+	}
+	for index, item := range items {
+		tokens = append(tokens, item...)
+		if multiline {
+			tokens = append(tokens,
+				&hclwrite.Token{Type: hclsyntax.TokenComma, Bytes: []byte(",")},
+				&hclwrite.Token{Type: hclsyntax.TokenNewline, Bytes: []byte("\n")})
+		} else if index < len(items)-1 {
+			tokens = append(tokens, &hclwrite.Token{Type: hclsyntax.TokenComma, Bytes: []byte(",")})
+		}
+	}
+	return append(tokens, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
+}
+
+func sortedKeys[V any](values map[string]V) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }

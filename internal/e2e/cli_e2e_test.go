@@ -73,7 +73,7 @@ func TestCLIAuthoringAndPackageLoop(t *testing.T) {
 	if created.Outcome != "created" {
 		t.Fatalf("init = %#v\nstderr:\n%s", created, init.stderr)
 	}
-	if _, err := os.Stat(filepath.Join(root, "SHED.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, "SHED.hcl")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -102,7 +102,7 @@ func TestCLIAuthoringAndPackageLoop(t *testing.T) {
 	if prepared.Outcome != "prepared" || prepared.Source.FileCount < 2 || prepared.Source.ArchivePath != archive {
 		t.Fatalf("dry-run = %#v\nstderr:\n%s", prepared, dryRun.stderr)
 	}
-	if names := archiveEntries(t, archive); !slices.Contains(names, "SHED.yaml") || !slices.Contains(names, "package.json") {
+	if names := archiveEntries(t, archive); !slices.Contains(names, "SHED.hcl") || !slices.Contains(names, "package.json") {
 		t.Fatalf("archive entries = %#v", names)
 	}
 

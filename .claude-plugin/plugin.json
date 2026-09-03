@@ -1,6 +1,6 @@
 {
   "name": "shed",
-  "description": "Use the shed CLI: write SHED.yaml, package and deploy an app, and read shed's structured errors.",
+  "description": "Use the shed CLI: write SHED.hcl, package and deploy an app, and read shed's structured errors.",
   "author": {
     "name": "Shed",
     "url": "https://github.com/shed-sh"

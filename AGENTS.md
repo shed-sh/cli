@@ -13,7 +13,7 @@ Shed is a Go 1.26.3 CLI for assembling and deploying small Next.js projects.
 - `internal/auth/` implements the encrypted CLI login protocol.
 - `internal/credentials/` resolves and stores CLI tokens.
 - `internal/railpack/` and the vendored Railpack module provide project detection.
-- `internal/definition/` generates and validates the authoritative `SHED.yaml`.
+- `internal/definition/` generates and validates the authoritative `SHED.hcl`.
 - `internal/shedfile/` evaluates the authored Starlark `SHED` program into that same manifest and renders/validates it for `init --format shed`, `check`, and `schema`.
 - `internal/source/` resolves content, creates deterministic archives, and safely extracts them.
 - `internal/api/` contains the draft Shed cloud HTTP contract.

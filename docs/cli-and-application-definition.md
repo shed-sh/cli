@@ -53,7 +53,7 @@ The corresponding Shed cloud backend does **not** exist yet.
 - E2E inspection against pinned Next.js and Node.js Git submodules. The suite
   currently generates a Railpack plan and validates provider selection,
   toolchains, start commands, and evidence.
-- One deterministic `shed.run/v1alpha1` `SHED.yaml` contract containing the
+- One deterministic `shed.run/v1alpha1` `SHED.hcl` contract containing the
   content closure, build image and commands, and runtime contract.
 - Railpack-to-SHED lowering for Node and for Go modules. A Go project compiles
   and runs out of the same pinned `golang` image, because Railpack builds one
@@ -74,7 +74,7 @@ The corresponding Shed cloud backend does **not** exist yet.
   request IDs, a 30-second default wait followed by a resumable receipt,
   explicit detach/terminal waits, log-stage filtering, and no URL before ready.
 - A Starlark `SHED` program (V1) with exactly three builtins — `build()`,
-  `http_app()`, `glob()` — evaluated into the same `SHED.yaml` before
+  `http_app()`, `glob()` — evaluated into the same `SHED.hcl` before
   packaging. `shed check` reports every diagnostic in one pass with stable
   codes and `SHED:line:col` positions; `shed schema` prints the authoring API;
   `shed init --format shed` writes a program whose evaluation round-trips.
@@ -97,7 +97,7 @@ The corresponding Shed cloud backend does **not** exist yet.
 
 ### Ordered next work
 
-1. Add a first-class static workload to `SHED.yaml`, lower Railpack static/SPA
+1. Add a first-class static workload to `SHED.hcl`, lower Railpack static/SPA
    detection into it, and verify plain-static and built-SPA archives locally.
 2. Add compiled digest-pinned trusted images and keep Docker, Buildah, and Werf
    behind the builder interface.
@@ -130,25 +130,28 @@ runnable example where behavior changed, and record the validation command.
 
 The public definition is the only executable IR:
 
-```yaml
-apiVersion: shed.run/v1alpha1
-kind: Application
-metadata:
-  name: example-app
-content:
-  include: [package.json, package-lock.json, server.js]
-build:
-  image: node:24
-  commands:
-    - [npm, ci]
-run:
-  command: [node, server.js]
-  workingDirectory: /app
-  user: "1000:1000"
-  environment:
-    PORT: "8080"
-  port: 8080
-  stopSignal: SIGTERM
+```hcl
+application "example-app" {
+  content {
+    include = ["package.json", "package-lock.json", "server.js"]
+  }
+
+  build {
+    image    = "node:24"
+    commands = [["npm", "ci"]]
+  }
+
+  run {
+    command           = ["node", "server.js"]
+    port              = 8080
+    working_directory = "/app"
+    user              = "1000:1000"
+    environment = {
+      PORT = "8080"
+    }
+    stop_signal = "SIGTERM"
+  }
+}
 ```
 
 The archive embeds this file, a canonical `.shed-source.json`, and the selected
@@ -161,7 +164,7 @@ it without consulting the original project directory.
 A project may instead be defined by a `SHED` program — Starlark with three
 predeclared builtins — that evaluates to the manifest above. The program is an
 authoring format only: evaluation happens before packaging, the archive embeds
-the evaluated `SHED.yaml`, and the `SHED` file itself is structurally excluded
+the evaluated `SHED.hcl`, and the `SHED` file itself is structurally excluded
 from content.
 
 ```python
@@ -197,7 +200,7 @@ multiple apps, `detect()`, `load()`, build-time env; the remote `base/parts/
 apps` projection stays generator-only.
 
 Resolution precedence: a `SHED` program is evaluated when present; otherwise
-`SHED.yaml` is parsed; otherwise Railpack detection scaffolds a definition.
+`SHED.hcl` is parsed; otherwise Railpack detection scaffolds a definition.
 Both files present is a `definition_conflict` error — two authoritative
 definitions cannot decide one build.
 
@@ -206,20 +209,26 @@ definitions cannot decide one build.
 Static output is a different workload kind, not an HTTP process with a guessed
 server command. `static` and `run` are mutually exclusive:
 
-```yaml
-apiVersion: shed.run/v1alpha1
-kind: Application
-content:
-  include: [package.json, package-lock.json, src, public]
-build:
-  image: node:24
-  commands:
-    - [npm, ci]
-    - [npm, run, build]
-static:
-  directory: dist
-  index: index.html
-  fallback: index.html
+```hcl
+application "example-site" {
+  content {
+    include = ["package.json", "package-lock.json", "src", "public"]
+  }
+
+  build {
+    image = "node:24"
+    commands = [
+      ["npm", "ci"],
+      ["npm", "run", "build"],
+    ]
+  }
+
+  static {
+    directory = "dist"
+    index     = "index.html"
+    fallback  = "index.html"
+  }
+}
 ```
 
 `static.directory` is a normalized relative path in the post-build artifact.

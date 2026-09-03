@@ -98,7 +98,7 @@ func lower(app *appCall) (definition.GeneratedDefinition, *diag.Error) {
 			StopSignal:       app.stopSignal,
 		},
 	}
-	yamlData, err := manifest.Marshal()
+	encoded, err := manifest.Marshal()
 	if err != nil {
 		return definition.GeneratedDefinition{}, &diag.Error{
 			Code:    "invalid_definition",
@@ -106,7 +106,7 @@ func lower(app *appCall) (definition.GeneratedDefinition, *diag.Error) {
 			Cause:   err,
 		}
 	}
-	return definition.GeneratedDefinition{Manifest: manifest, YAML: yamlData}, nil
+	return definition.GeneratedDefinition{Manifest: manifest, Source: encoded}, nil
 }
 
 func dedupe(sorted []string) []string {

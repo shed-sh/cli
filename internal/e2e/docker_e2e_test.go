@@ -33,7 +33,7 @@ func TestPackagedArchiveDockerEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	archive, err := source.Prepare(root, filepath.Join(t.TempDir(), "application.tar.gz"), generated.YAML, generated.Manifest.Content.Include...)
+	archive, err := source.Prepare(root, filepath.Join(t.TempDir(), "application.tar.gz"), generated.Source, generated.Manifest.Content.Include...)
 	if err != nil {
 		t.Fatal(err)
 	}

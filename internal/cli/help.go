@@ -44,6 +44,27 @@ func writePairs(w io.Writer, gap int, pairs []pair) {
 	}
 }
 
+// wrapIndented breaks a paragraph on spaces so it fits the help screen, with
+// every continuation line indented to match the first.
+func wrapIndented(text string, indent int) string {
+	const width = 78
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return text
+	}
+	var lines []string
+	current := words[0]
+	for _, word := range words[1:] {
+		if indent+len(current)+1+len(word) > width {
+			lines, current = append(lines, current), word
+			continue
+		}
+		current += " " + word
+	}
+	lines = append(lines, current)
+	return strings.Join(lines, "\n"+strings.Repeat(" ", indent))
+}
+
 func flagPairs(command clispec.Command) []pair {
 	pairs := make([]pair, 0, len(command.Flags))
 	for _, declared := range command.Flags {
@@ -159,6 +180,10 @@ func (a *App) printCommandHelp(command clispec.Command) {
 	_, _ = fmt.Fprintln(a.stdout, style.Strong("shed "+command.Signature()))
 	_, _ = fmt.Fprintln(a.stdout)
 	_, _ = fmt.Fprintln(a.stdout, "  "+command.Summary)
+	if command.Description != "" {
+		_, _ = fmt.Fprintln(a.stdout)
+		_, _ = fmt.Fprintln(a.stdout, "  "+wrapIndented(command.Description, 2))
+	}
 
 	if len(command.Flags) > 0 {
 		_, _ = fmt.Fprintln(a.stdout)
@@ -190,17 +215,20 @@ type helpContract struct {
 }
 
 type commandContract struct {
-	Name      string            `json:"name"`
-	Group     string            `json:"group"`
-	Aliases   []string          `json:"aliases,omitempty"`
-	Usage     string            `json:"usage,omitempty"`
-	Summary   string            `json:"summary"`
-	UsageLine string            `json:"usageLine,omitempty"`
-	MinArgs   int               `json:"minArgs"`
-	MaxArgs   int               `json:"maxArgs"`
-	Flags     []flagContract    `json:"flags,omitempty"`
-	Exclusive [][]string        `json:"exclusive,omitempty"`
-	Examples  []exampleContract `json:"examples,omitempty"`
+	Name    string   `json:"name"`
+	Group   string   `json:"group"`
+	Aliases []string `json:"aliases,omitempty"`
+	Usage   string   `json:"usage,omitempty"`
+	Summary string   `json:"summary"`
+	// Description is the long form, present only where the Summary is not
+	// the whole story.
+	Description string            `json:"description,omitempty"`
+	UsageLine   string            `json:"usageLine,omitempty"`
+	MinArgs     int               `json:"minArgs"`
+	MaxArgs     int               `json:"maxArgs"`
+	Flags       []flagContract    `json:"flags,omitempty"`
+	Exclusive   [][]string        `json:"exclusive,omitempty"`
+	Examples    []exampleContract `json:"examples,omitempty"`
 }
 
 type flagContract struct {
@@ -228,15 +256,16 @@ func newHelpContract(version string) helpContract {
 	for _, group := range clispec.Groups {
 		for _, command := range group.Commands {
 			entry := commandContract{
-				Name:      command.Name,
-				Group:     group.Title,
-				Aliases:   command.Aliases,
-				Usage:     command.Usage,
-				Summary:   command.Summary,
-				UsageLine: command.UsageLine,
-				MinArgs:   command.MinArgs,
-				MaxArgs:   command.MaxArgs,
-				Exclusive: command.Exclusive,
+				Name:        command.Name,
+				Group:       group.Title,
+				Aliases:     command.Aliases,
+				Usage:       command.Usage,
+				Summary:     command.Summary,
+				Description: command.Description,
+				UsageLine:   command.UsageLine,
+				MinArgs:     command.MinArgs,
+				MaxArgs:     command.MaxArgs,
+				Exclusive:   command.Exclusive,
 			}
 			for _, declared := range command.Flags {
 				entry.Flags = append(entry.Flags, flagContract{

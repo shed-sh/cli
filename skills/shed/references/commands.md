@@ -31,7 +31,7 @@ Run `shed help --output json` for the same contract as machine-readable JSON.
 | Command | Purpose |
 |---|---|
 | `shed deploy [directory]` | Send the project to the Shed cloud, or build and run it here with --local |
-| `shed init [directory]` | Look at the project and write SHED.yaml, or SHED with --format shed |
+| `shed init [directory]` | Look at the project and write SHED.hcl, or SHED with --format shed |
 | `shed check [directory]` | Evaluate the definition and report every problem in it |
 | `shed schema` | Print the SHED file API |
 | `shed status <deployment>` | Show, or wait for, a deployment's state |
@@ -54,6 +54,8 @@ Run `shed help --output json` for the same contract as machine-readable JSON.
 ### `shed deploy [directory]`
 
 Send the project to the Shed cloud, or build and run it here with --local.
+
+Deploy looks at the directory and works from one definition. If SHED.hcl or a Starlark SHED file is there, it is used exactly as written and never regenerated. If neither exists, Shed detects the software (Node.js, Next.js, or a Go module) and generates a definition for this deploy only; nothing is written to the project, shed init is what keeps one. Either way the result is packaged into a deterministic archive that carries the definition, and that archive is what gets built and run.
 
 | Flag | Type | Default | Purpose |
 |---|---|---|---|
@@ -83,14 +85,16 @@ shed deploy . --dry-run --archive app.tar.gz   # Package it and look inside
 
 ### `shed init [directory]`
 
-Look at the project and write SHED.yaml, or SHED with --format shed.
+Look at the project and write SHED.hcl, or SHED with --format shed.
+
+Init detects the software in the directory and writes the definition deploy would otherwise generate on the fly, so it can be read, edited, and committed. If SHED.hcl or SHED already exists it is validated and left alone; delete it to detect again.
 
 | Flag | Type | Default | Purpose |
 |---|---|---|---|
-| `--format yaml\|shed` | string | `yaml` | Definition format to write |
+| `--format hcl\|shed` | string | `hcl` | Definition format to write |
 | `--output human\|json` | string | `human` | Choose the output format |
 
-Wrong argument count returns `usage: shed init [directory] [--format yaml|shed] [--output human|json]`.
+Wrong argument count returns `usage: shed init [directory] [--format hcl|shed] [--output human|json]`.
 
 ### `shed check [directory]`
 

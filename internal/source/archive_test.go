@@ -18,7 +18,7 @@ func TestPrepareIsDeterministicAndExcludesSecrets(t *testing.T) {
 	writeTestFile(t, root, "src/server.js", "console.log('ok')", 0o755)
 	writeTestFile(t, root, ".env", "SECRET=value", 0o644)
 	writeTestFile(t, root, ".git", "gitdir: /outside/worktree", 0o644)
-	manifest := []byte("apiVersion: shed.run/v1alpha1\nkind: Application\n")
+	manifest := []byte("application \"app\" {}\n")
 	firstPath := filepath.Join(t.TempDir(), "first.tar.gz")
 	secondPath := filepath.Join(t.TempDir(), "second.tar.gz")
 	first, err := Prepare(root, firstPath, manifest)
@@ -46,7 +46,7 @@ func TestPrepareIsDeterministicAndExcludesSecrets(t *testing.T) {
 	if !reflect.DeepEqual(firstBytes, secondBytes) {
 		t.Fatal("archive bytes are not deterministic")
 	}
-	want := []string{".shed-source.json", "SHED.yaml", "package-lock.json", "package.json", "src/server.js"}
+	want := []string{".shed-source.json", "SHED.hcl", "package-lock.json", "package.json", "src/server.js"}
 	if got := archiveNames(t, firstPath); !reflect.DeepEqual(got, want) {
 		t.Fatalf("archive names = %#v, want %#v", got, want)
 	}

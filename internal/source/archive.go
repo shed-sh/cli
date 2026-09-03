@@ -42,7 +42,7 @@ type Archive struct {
 	Temporary      bool     `json:"-"`
 }
 
-func Prepare(root, outputPath string, manifestYAML []byte, selections ...string) (Archive, error) {
+func Prepare(root, outputPath string, definitionSource []byte, selections ...string) (Archive, error) {
 	absoluteRoot, err := filepath.Abs(root)
 	if err != nil {
 		return Archive{}, fmt.Errorf("resolve application root: %w", err)
@@ -63,7 +63,7 @@ func Prepare(root, outputPath string, manifestYAML []byte, selections ...string)
 			return Archive{}, err
 		}
 	}
-	entries, err := inspectEntries(absoluteRoot, files, manifestYAML)
+	entries, err := inspectEntries(absoluteRoot, files, definitionSource)
 	if err != nil {
 		return Archive{}, err
 	}
@@ -90,7 +90,7 @@ func Prepare(root, outputPath string, manifestYAML []byte, selections ...string)
 			return Archive{}, fmt.Errorf("close temporary archive: %w", closeErr)
 		}
 	}
-	digest, size, err := writeArchive(absoluteRoot, outputPath, entries, manifestYAML, sourceManifest)
+	digest, size, err := writeArchive(absoluteRoot, outputPath, entries, definitionSource, sourceManifest)
 	if err != nil {
 		if temporary {
 			_ = os.Remove(outputPath)
@@ -133,9 +133,9 @@ func (a Archive) Close() error {
 	return os.Remove(a.Path)
 }
 
-func inspectEntries(root string, files []string, manifestYAML []byte) ([]Entry, error) {
+func inspectEntries(root string, files []string, definitionSource []byte) ([]Entry, error) {
 	entries := make([]Entry, 0, len(files)+1)
-	entries = append(entries, bytesEntry(definition.ManifestFileName, manifestYAML, 0o644))
+	entries = append(entries, bytesEntry(definition.ManifestFileName, definitionSource, 0o644))
 	for _, relative := range files {
 		filename := filepath.Join(root, filepath.FromSlash(relative))
 		info, err := os.Lstat(filename)
@@ -201,7 +201,7 @@ func writeField(writer io.Writer, value string) {
 	_, _ = io.WriteString(writer, value)
 }
 
-func writeArchive(root, outputPath string, entries []Entry, manifestYAML, sourceManifest []byte) (string, int64, error) {
+func writeArchive(root, outputPath string, entries []Entry, definitionSource, sourceManifest []byte) (string, int64, error) {
 	output, err := os.OpenFile(outputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return "", 0, fmt.Errorf("create source archive: %w", err)
@@ -235,7 +235,7 @@ func writeArchive(root, outputPath string, entries []Entry, manifestYAML, source
 		var data []byte
 		switch entry.Path {
 		case definition.ManifestFileName:
-			data = manifestYAML
+			data = definitionSource
 		case SourceManifestFileName:
 			data = sourceManifest
 		default:

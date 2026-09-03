@@ -41,6 +41,9 @@ Run `shed help --output json` for the same contract as machine-readable JSON.
 ### `shed {{ .Signature }}`
 
 {{ .Summary }}.
+{{ if .Description }}
+{{ .Description }}
+{{ end -}}
 {{ if .Aliases }}
 Also spelled {{ aliases .Aliases }}.
 {{ end -}}

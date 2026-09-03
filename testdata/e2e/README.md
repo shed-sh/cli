@@ -55,7 +55,7 @@ git submodule update --init --depth 1
 
 The regular E2E tests do not install JavaScript dependencies or execute the
 Git-submodule projects. They inspect the checked-out source, generate the
-offline application plan and `SHED.yaml`, and create a canonical deterministic
+offline application plan and `SHED.hcl`, and create a canonical deterministic
 source archive for every fixture. No network upload occurs.
 
 ## Docker

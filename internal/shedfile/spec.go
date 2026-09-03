@@ -1,5 +1,5 @@
 // Package shedfile evaluates the authored SHED program into the same
-// definition.Manifest that SHED.yaml declares directly. The program is an
+// definition.Manifest that SHED.hcl declares directly. The program is an
 // authoring convenience only: the builder, the archive, the digests, and the
 // remote protocol never see it, so determinism and idempotency are unaffected.
 package shedfile

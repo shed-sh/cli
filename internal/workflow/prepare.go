@@ -92,10 +92,12 @@ type Result struct {
 // Prepared is the immutable handoff from project inspection to execution.
 // Execution backends consume Archive and Manifest and must not inspect Root.
 type Prepared struct {
-	Root         string
-	Manifest     definition.Manifest
-	ManifestYAML []byte
-	Archive      source.Archive
+	Root     string
+	Manifest definition.Manifest
+	// ManifestSource is the manifest as SHED.hcl bytes, the copy the archive
+	// carries.
+	ManifestSource []byte
+	Archive        source.Archive
 }
 
 func (prepared Prepared) Close() error {
@@ -115,11 +117,11 @@ func Prepare(options Options) (Prepared, error) {
 	if err != nil {
 		return Prepared{}, err
 	}
-	archive, err := source.Prepare(absoluteRoot, options.Archive, generated.YAML, generated.Manifest.Content.Include...)
+	archive, err := source.Prepare(absoluteRoot, options.Archive, generated.Source, generated.Manifest.Content.Include...)
 	if err != nil {
 		return Prepared{}, fmt.Errorf("prepare source archive: %w", err)
 	}
-	return Prepared{Root: absoluteRoot, Manifest: generated.Manifest, ManifestYAML: generated.YAML, Archive: archive}, nil
+	return Prepared{Root: absoluteRoot, Manifest: generated.Manifest, ManifestSource: generated.Source, Archive: archive}, nil
 }
 
 func Run(ctx context.Context, options Options) (Result, error) {
@@ -309,7 +311,7 @@ func firstLog(result *core.BuildResult) string {
 }
 
 // ResolveDefinition loads the authoritative definition when one is present —
-// the SHED program or the SHED.yaml manifest, never both. Detection is only
+// the SHED program or the SHED.hcl manifest, never both. Detection is only
 // scaffolding for projects that do not have a definition yet.
 func ResolveDefinition(root string, generator definition.DefinitionGenerator) (definition.GeneratedDefinition, error) {
 	program, manifest, err := readDefinitionFiles(root)
@@ -328,7 +330,7 @@ func ResolveDefinition(root string, generator definition.DefinitionGenerator) (d
 		if parseErr != nil {
 			return definition.GeneratedDefinition{}, parseErr
 		}
-		return definition.GeneratedDefinition{Manifest: parsed, YAML: manifest}, nil
+		return definition.GeneratedDefinition{Manifest: parsed, Source: manifest}, nil
 	}
 	return GenerateDefinition(root, generator)
 }
@@ -402,7 +404,7 @@ func Check(root string) (definition.GeneratedDefinition, string, []*diag.Error, 
 			return definition.GeneratedDefinition{}, definition.ManifestFileName,
 				[]*diag.Error{{Code: "invalid_definition", Summary: parseErr.Error(), Cause: parseErr}}, nil
 		}
-		return definition.GeneratedDefinition{Manifest: parsed, YAML: manifest}, definition.ManifestFileName, nil, nil
+		return definition.GeneratedDefinition{Manifest: parsed, Source: manifest}, definition.ManifestFileName, nil, nil
 	}
 	return definition.GeneratedDefinition{}, "", nil, &diag.Error{
 		Code:    "missing_definition",
@@ -445,21 +447,18 @@ func GenerateDefinition(root string, generator definition.DefinitionGenerator) (
 	if generator == nil {
 		generator = definition.RailpackGenerator{}
 	}
-	generated, err := generator.Generate(definition.GenerationInput{Files: files, Build: buildResult})
+	generated, err := generator.Generate(definition.GenerationInput{
+		Files: files,
+		Build: buildResult,
+		Name:  definition.SanitizeProjectName(filepath.Base(filepath.Clean(root))),
+	})
 	if err != nil {
 		return definition.GeneratedDefinition{}, fmt.Errorf("generate %s: %w", definition.ManifestFileName, err)
-	}
-	if generated.Manifest.Metadata == nil {
-		generated.Manifest.Metadata = &definition.ManifestMetadata{Name: definition.SanitizeProjectName(filepath.Base(filepath.Clean(root)))}
-		generated.YAML, err = generated.Manifest.Marshal()
-		if err != nil {
-			return definition.GeneratedDefinition{}, fmt.Errorf("encode %s: %w", definition.ManifestFileName, err)
-		}
 	}
 	return generated, nil
 }
 
-// Initialize writes a fresh definition in the requested format ("yaml" or
+// Initialize writes a fresh definition in the requested format ("hcl" or
 // "shed"), or validates the one already on disk — whichever file exists,
 // regardless of the requested format, because an existing definition is
 // authoritative and is never regenerated. It returns the definition, whether
@@ -482,13 +481,13 @@ func Initialize(root string, generator definition.DefinitionGenerator, format st
 	}
 	if manifest != nil {
 		parsed, parseErr := definition.ParseManifest(manifest)
-		return definition.GeneratedDefinition{Manifest: parsed, YAML: manifest}, false, definition.ManifestFileName, parseErr
+		return definition.GeneratedDefinition{Manifest: parsed, Source: manifest}, false, definition.ManifestFileName, parseErr
 	}
 	generated, err := GenerateDefinition(absoluteRoot, generator)
 	if err != nil {
 		return definition.GeneratedDefinition{}, false, "", err
 	}
-	payload, filename := generated.YAML, definition.ManifestFileName
+	payload, filename := generated.Source, definition.ManifestFileName
 	if format == "shed" {
 		if payload, err = shedfile.Render(generated); err != nil {
 			return definition.GeneratedDefinition{}, false, "", err

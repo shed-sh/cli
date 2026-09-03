@@ -1,13 +1,13 @@
 ---
 name: shed
-description: Help end-users of the `shed` CLI install it, describe an app in a clean `SHED.yaml` (or Starlark `SHED`), and deploy it — to the Shed cloud by default, or locally in Docker with `--local`. Trigger when the user runs `shed` (init/check/schema/deploy/status/logs/cancel/stop/destroy/login/whoami/share), edits `SHED.yaml` (apiVersion `shed.run/v1alpha1`, kind `Application`), edits a Starlark `SHED` file, writes a `.shedignore`, or asks about shed error codes, the deploy state machine, or shed's JSON/NDJSON output contract. Do NOT trigger for unrelated Go CLIs, generic Dockerfiles, Railpack used outside of shed, or contributing to the shed codebase itself.
+description: Help end-users of the `shed` CLI install it, describe an app in a clean `SHED.hcl` (or Starlark `SHED`), and deploy it — to the Shed cloud by default, or locally in Docker with `--local`. Trigger when the user runs `shed` (init/check/schema/deploy/status/logs/cancel/stop/destroy/login/whoami/share), edits `SHED.hcl` (one `application "<name>"` block), edits a Starlark `SHED` file, writes a `.shedignore`, or asks about shed error codes, the deploy state machine, or shed's JSON/NDJSON output contract. Do NOT trigger for unrelated Go CLIs, generic Dockerfiles, Railpack used outside of shed, or contributing to the shed codebase itself.
 ---
 
 # shed
 
 Shed packages an app into a deterministic `tar.gz`, builds it, and runs it — on the Shed cloud by default, or locally in Docker with `--local`.
 
-The whole thing is driven by one file at the project root: **`SHED.yaml`** (declarative) or **`SHED`** (Starlark that evaluates to the same shape). `shed init` writes one for you; from then on it is authoritative — shed never regenerates or heals it.
+The whole thing is driven by one file at the project root: **`SHED.hcl`** (declarative HCL) or **`SHED`** (Starlark that evaluates to the same shape). `shed init` writes one for you; from then on it is authoritative — shed never regenerates or heals it. Without one, `shed deploy` detects the project and generates the same definition in memory for that deploy alone; it never writes it.
 
 Shed is agent-first: it never prompts except `shed login`, and every command supports `--output json` / `--output ndjson` with a stable failure envelope. Prefer JSON whenever you invoke shed programmatically.
 
@@ -36,7 +36,7 @@ Verify with `shed version`. Sign in with `shed login` before deploying.
 ## The three commands you actually run
 
 ```
-shed init              # detect the project and write SHED.yaml
+shed init              # detect the project and write SHED.hcl
 shed deploy .          # package → submit to the Shed cloud (`shed .` is shorthand; needs `shed login`)
 shed deploy . --local  # package → build → run here, in Docker
 ```
@@ -47,7 +47,7 @@ Everything else operates on the deployment id or instance id printed by `deploy`
 | Command | Purpose |
 |---|---|
 | `shed deploy [directory]` | Send the project to the Shed cloud, or build and run it here with --local |
-| `shed init [directory]` | Look at the project and write SHED.yaml, or SHED with --format shed |
+| `shed init [directory]` | Look at the project and write SHED.hcl, or SHED with --format shed |
 | `shed check [directory]` | Evaluate the definition and report every problem in it |
 | `shed schema` | Print the SHED file API |
 | `shed status <deployment>` | Show, or wait for, a deployment's state |
@@ -68,42 +68,49 @@ Everything else operates on the deployment id or instance id printed by `deploy`
 
 At runtime, prefer `shed help <command>` and `shed help --output json` over guessing — they come from the binary in front of you and always win over anything written here.
 
-## A clean `SHED.yaml`
+## A clean `SHED.hcl`
 
-`SHED.yaml` describes, compactly, **what to ship, how to build it, and how to run it**. Every field below is real; nothing is optional-looking-required.
+`SHED.hcl` describes, compactly, **what to ship, how to build it, and how to run it**. It is one `application` block; the label is the name, and there is no version or kind header. Every field below is real; nothing is optional-looking-required.
 
-```yaml
-apiVersion: shed.run/v1alpha1        # required, exact
-kind: Application                    # required, exact
-metadata:
-  name: my-app                       # DNS label: ^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])?$
-content:
-  include:                           # required, non-empty; paths shed will package
-    - package.json
-    - package-lock.json
-    - server.js
-build:
-  image: node:24                     # any Docker image ref
-  commands:                          # argv arrays — NO SHELL
-    - [npm, ci]
-    - [npm, run, build]
-run:
-  command: [node, server.js]         # required, non-empty argv
-  port: 8080                         # 1..65535; app must actually listen on it
-  workingDirectory: /app             # optional
-  environment:                       # optional
-    LOG_LEVEL: info
+```hcl
+application "my-app" {               # the label is the name: DNS label, ^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])?$
+  content {
+    include = [                      # required, non-empty; paths shed will package
+      "package.json",
+      "package-lock.json",
+      "server.js",
+    ]
+  }
+
+  build {
+    image = "node:24"                # any Docker image ref
+    commands = [                     # argv lists — NO SHELL
+      ["npm", "ci"],
+      ["npm", "run", "build"],
+    ]
+  }
+
+  run {
+    command           = ["node", "server.js"]   # required, non-empty argv
+    port              = 8080                    # 1..65535; app must actually listen on it
+    working_directory = "/app"                  # optional
+    environment = {                             # optional; values are strings
+      LOG_LEVEL = "info"
+    }
+  }
+}
 ```
 
-A real, working Go example lives at this repo's own `SHED.yaml`.
+A real, working Go example lives at this repo's own `SHED.hcl`.
 
 Rules that trip people up:
 
-- **Unknown top-level fields are rejected.** Typos fail loudly.
+- **Unknown attributes and blocks are rejected.** Typos fail loudly.
+- **Exactly one `application` block, and it needs its label.** `application {` without a name does not parse.
 - **`content.include` is a whitelist.** Only these paths are packaged. Entries must be relative, no `.`/`..`/absolute, and **no overlap** (`a` and `a/b` together is an error).
 - **No shell in commands.** Each command is argv (a list). `;`, `|`, `&`, `<`, `>`, `$`, backtick are rejected. If you truly need a shell: `[sh, -lc, "cmd1 && cmd2"]`.
 - **Port must be real.** The container must actually listen on `run.port` (or `$PORT` when Railpack sets it), or the readiness check fails.
-- **Structural excludes always apply** — `.git`, `node_modules`, `.next`, `dist`, `target`, `.env*`, `*.pem`, `*.key`, `*.log`, `SHED.yaml` itself, etc. — even if you put them in `include`. This is a hard rule to prevent secret leaks; do not try to bypass it.
+- **Structural excludes always apply** — `.git`, `node_modules`, `.next`, `dist`, `target`, `.env*`, `*.pem`, `*.key`, `*.log`, `SHED.hcl` itself, etc. — even if you put them in `include`. This is a hard rule to prevent secret leaks; do not try to bypass it.
 
 Full schema (including the `base` / `parts` / `apps` remote-builder projection) in `references/schema.md`.
 
@@ -121,7 +128,7 @@ b = build(
 http_app(name = "my-app", build = b, cmd = ["./out"], port = 8080)
 ```
 
-Rules that trip people up: every argument is named (only `glob`'s patterns may be positional); `build()` must be assigned to a variable, never written inline; commands are argv lists, never shell strings; `PORT` is injected from `port` when absent. Never have both `SHED` and `SHED.yaml` — that's a `definition_conflict` error.
+Rules that trip people up: every argument is named (only `glob`'s patterns may be positional); `build()` must be assigned to a variable, never written inline; commands are argv lists, never shell strings; `PORT` is injected from `port` when absent. Never have both `SHED` and `SHED.hcl` — that's a `definition_conflict` error.
 
 Full builtin signatures, the language subset, and every diagnostic code in `references/starlark.md`; `shed schema` prints the same API from the binary itself.
 
@@ -139,9 +146,11 @@ shed schema                  # the Starlark `SHED` API
 ## Deploy: cloud (the default)
 
 1. `cd` into the app root.
-2. `shed init --output json` — writes `SHED.yaml`. The `definitionReport` in the JSON shows detected provider, includes, builds, run command, and whether the port is `assumed` or `declared`.
+2. `shed init --output json` — writes `SHED.hcl`. The `definitionReport` in the JSON shows detected provider, includes, builds, run command, and whether the port is `assumed` or `declared`.
 3. Review the file. From here it is authoritative — delete it to redetect.
 4. `shed deploy . --output json` — packages and submits it. Returns a ready URL, or a `"pending"` receipt after 30s (see below).
+
+What `deploy` does with the directory: if `SHED.hcl` or `SHED` exists it is used exactly as written. If neither exists, shed detects the project and generates the definition in memory for that deploy only — the project is not written to; step 2 is how you keep one. Either way the archive it ships carries the definition.
 
 ```
 shed login                                    # opens a browser; the code comes back on its own (only interactive command)
@@ -170,7 +179,7 @@ tar -tzf /tmp/app.tar.gz
 
 `shed init` only detects **Node.js / Next.js** (npm, pnpm, yarn — lockfile required) and **Go modules** (root `go.mod`). Anything else — Python, Ruby, Bun, static SPAs, Rust, workspaces-only Go — errors with `unsupported_project`.
 
-For those, **hand-author `SHED.yaml`**. The executor is provider-neutral: any Docker image + argv works.
+For those, **hand-author `SHED.hcl`**. The executor is provider-neutral: any Docker image + argv works.
 
 ## Reading errors
 
@@ -184,7 +193,7 @@ Every failure in `--output json` mode:
 
 | Code | Meaning / fix |
 |---|---|
-| `unsupported_project` | Railpack detected the language but shed doesn't autogenerate for it. Hand-author `SHED.yaml`. |
+| `unsupported_project` | Railpack detected the language but shed doesn't autogenerate for it. Hand-author `SHED.hcl`. |
 | `detection_failed` | Railpack couldn't identify the app. Add a lockfile / `go.mod`, or hand-author. |
 | `missing_package_json` / `missing_lockfile` | Node project without `package.json` or one of `package-lock.json` / `npm-shrinkwrap.json` / `yarn.lock` / `pnpm-lock.yaml` / `bun.lock(b)`. |
 | `missing_go_mod` | Go project without a root `go.mod`. Workspaces-only won't work. |
@@ -220,15 +229,15 @@ Debug ignores with `shed deploy . --dry-run --output json` and read `source.mani
 
 - Do not write shell operators (`&&`, `|`, `;`, `$VAR`, backticks) inside `build.commands` or `run.command` entries. Use `[sh, -lc, "..."]` if you truly need a shell.
 - Do not put `.env`, `*.pem`, `*.key`, `node_modules`, `.git` in `content.include` — they are silently stripped.
-- Do not edit `SHED.yaml` and re-run `shed init` expecting a merge. `init` only writes when the file is missing.
+- Do not edit `SHED.hcl` and re-run `shed init` expecting a merge. `init` only writes when the file is missing.
 - Do not write a `static:` workload — validation rejects it. Serve static files with a real server in `run.command`.
 - Do not claim a remote deployment succeeded unless shed printed a ready URL. If `--remote` failed or is `pending`, say so and resume with `shed status <id> --wait`.
 
 ## When this isn't enough
 
 - `references/commands.md` — every subcommand and flag, generated from the CLI's own registry.
-- `references/schema.md` — full `SHED.yaml` schema including the remote-builder projection.
+- `references/schema.md` — full `SHED.hcl` schema including the remote-builder projection.
 - `references/starlark.md` — full Starlark `SHED` reference: builtins, call rules, language subset, diagnostic codes.
 - `references/errors.md` — full error code table with source-of-truth file paths.
 - `shed help --output json` at runtime — authoritative over anything written here.
-- This repo's own `SHED.yaml` — a live, working Go example.
+- This repo's own `SHED.hcl` — a live, working Go example.

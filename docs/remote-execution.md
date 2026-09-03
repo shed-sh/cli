@@ -8,7 +8,7 @@ resource and its identifier is the resume handle used by agents.
 ## Ownership boundary
 
 ```text
-Railpack inspection → SHED.yaml → deterministic archive
+Railpack inspection → SHED.hcl → deterministic archive
                                       ↓
                               internal/execution
                                       ↓

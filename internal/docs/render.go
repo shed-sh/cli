@@ -134,7 +134,7 @@ func RenderCommandTable() string {
 type AgentContext struct {
 	Skill    string // SKILL.md content, frontmatter included
 	Starlark string // the generated SHED language reference
-	Schema   string // the SHED.yaml schema reference
+	Schema   string // the SHED.hcl schema reference
 	Commands string // the generated CLI reference
 	Errors   string // the error-code reference
 }

@@ -28,7 +28,7 @@ func TestInitializeWritesDefinitionOnce(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, definition.ManifestFileName)); err != nil {
 		t.Fatal(err)
 	}
-	_, created, _, err = Initialize(root, nil, "yaml")
+	_, created, _, err = Initialize(root, nil, "hcl")
 	if err != nil || created {
 		t.Fatalf("second init created=%v err=%v", created, err)
 	}
@@ -40,6 +40,7 @@ func TestExistingDefinitionIsAuthoritativeWithoutRailpackDetection(t *testing.T)
 	manifest := definition.Manifest{
 		APIVersion: definition.ManifestAPIVersion,
 		Kind:       definition.ManifestKind,
+		Metadata:   &definition.ManifestMetadata{Name: "script"},
 		Content:    definition.ManifestContent{Include: []string{"main.py"}},
 		Build:      definition.ManifestBuild{Image: "python:3.13", Commands: [][]string{{"python", "-m", "compileall", "."}}},
 		Run:        definition.ManifestRun{Command: []string{"python", "main.py"}, Port: 8000},
@@ -155,7 +156,7 @@ func TestGoProjectIsDetectedPackagedAndLowered(t *testing.T) {
 }
 
 // A SHED program is evaluated at prepare time and only its evaluation ships:
-// the archive carries the resulting SHED.yaml and never the program itself.
+// the archive carries the resulting SHED.hcl and never the program itself.
 func TestShedProgramResolvesAndPackagesItsEvaluation(t *testing.T) {
 	root := t.TempDir()
 	writeWorkflowFile(t, root, "go.mod", "module example.com/service\n\ngo 1.24\n")
@@ -191,9 +192,9 @@ http_app(
 	if slices.Contains(packaged, "SHED") {
 		t.Fatalf("the program leaked into the archive: %v", packaged)
 	}
-	reparsed, err := definition.ParseManifest(prepared.ManifestYAML)
+	reparsed, err := definition.ParseManifest(prepared.ManifestSource)
 	if err != nil || reparsed.Run.Port != 8080 {
-		t.Fatalf("embedded YAML: %+v err=%v", reparsed, err)
+		t.Fatalf("embedded %s: %+v err=%v", definition.ManifestFileName, reparsed, err)
 	}
 }
 
@@ -201,13 +202,13 @@ func TestTwoDefinitionsAreAConflict(t *testing.T) {
 	root := t.TempDir()
 	writeWorkflowFile(t, root, "go.mod", "module example.com/service\n\ngo 1.24\n")
 	writeWorkflowFile(t, root, "SHED", "b = 1\n")
-	writeWorkflowFile(t, root, definition.ManifestFileName, "apiVersion: shed.run/v1alpha1\n")
+	writeWorkflowFile(t, root, definition.ManifestFileName, "application \"service\" {}\n")
 	_, err := ResolveDefinition(root, nil)
 	diagnostic, ok := diag.As(err)
 	if !ok || diagnostic.Code != "definition_conflict" {
 		t.Fatalf("err = %v", err)
 	}
-	_, _, _, err = Initialize(root, nil, "yaml")
+	_, _, _, err = Initialize(root, nil, "hcl")
 	if diagnostic, ok = diag.As(err); !ok || diagnostic.Code != "definition_conflict" {
 		t.Fatalf("init err = %v", err)
 	}
@@ -250,7 +251,7 @@ func TestInitializeWritesShedFormat(t *testing.T) {
 		t.Fatalf("created=%v filename=%q", created, filename)
 	}
 	if _, err := os.Stat(filepath.Join(root, definition.ManifestFileName)); !os.IsNotExist(err) {
-		t.Fatalf("SHED.yaml should not exist: %v", err)
+		t.Fatalf("%s should not exist: %v", definition.ManifestFileName, err)
 	}
 	// A second init validates the program instead of regenerating, and its
 	// evaluation reproduces what init reported.

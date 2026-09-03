@@ -26,9 +26,12 @@ var Groups = []Group{
 		Title: "Your project",
 		Commands: []Command{
 			{
-				Name:      "deploy",
-				Usage:     "[directory]",
-				Summary:   "Send the project to the Shed cloud, or build and run it here with --local",
+				Name:    "deploy",
+				Usage:   "[directory]",
+				Summary: "Send the project to the Shed cloud, or build and run it here with --local",
+				Description: "Deploy looks at the directory and works from one definition. If " + DefinitionFileName + " or a Starlark SHED file is there, it is used exactly as written and never regenerated. " +
+					"If neither exists, Shed detects the software (Node.js, Next.js, or a Go module) and generates a definition for this deploy only; nothing is written to the project, shed init is what keeps one. " +
+					"Either way the result is packaged into a deterministic archive that carries the definition, and that archive is what gets built and run.",
 				MinArgs:   0,
 				MaxArgs:   1,
 				UsageLine: "usage: shed deploy [directory]",
@@ -61,14 +64,16 @@ var Groups = []Group{
 				},
 			},
 			{
-				Name:      "init",
-				Usage:     "[directory]",
-				Summary:   "Look at the project and write " + DefinitionFileName + ", or SHED with --format shed",
+				Name:    "init",
+				Usage:   "[directory]",
+				Summary: "Look at the project and write " + DefinitionFileName + ", or SHED with --format shed",
+				Description: "Init detects the software in the directory and writes the definition deploy would otherwise generate on the fly, so it can be read, edited, and committed. " +
+					"If " + DefinitionFileName + " or SHED already exists it is validated and left alone; delete it to detect again.",
 				MinArgs:   0,
 				MaxArgs:   1,
-				UsageLine: "usage: shed init [directory] [--format yaml|shed] [--output human|json]",
+				UsageLine: "usage: shed init [directory] [--format hcl|shed] [--output human|json]",
 				Flags: []Flag{
-					{Name: "format", Kind: KindString, Default: "yaml", Values: []string{"yaml", "shed"}, Summary: "Definition format to write"},
+					{Name: "format", Kind: KindString, Default: "hcl", Values: []string{"hcl", "shed"}, Summary: "Definition format to write"},
 					outputFlag("human", humanJSON...),
 				},
 			},

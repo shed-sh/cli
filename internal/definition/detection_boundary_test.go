@@ -85,7 +85,7 @@ func TestRailpackReportsNoPortForAnyProvider(t *testing.T) {
 // Detection is by filename, never by behaviour. Nothing distinguishes an HTTP
 // server from a CLI tool or a batch worker, so a project that never listens is
 // detected, lowered, and built exactly like one that does — and only fails at
-// the readiness probe. Any workload contract has to come from SHED.yaml.
+// the readiness probe. Any workload contract has to come from SHED.hcl.
 func TestDetectionCannotTellAServerFromAWorker(t *testing.T) {
 	worker := detectFixture(t, map[string]string{
 		"go.mod":  "module example.com/worker\n\ngo 1.24\n",

@@ -23,12 +23,12 @@ Every failure in `--output json` mode has this envelope:
 
 | Code | Meaning | Fix |
 |---|---|---|
-| `detection_failed` | Railpack could not identify the project type. | Add a lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`) or `go.mod`. Or hand-author `SHED.yaml`. |
-| `unsupported_project` | Railpack identified the type, but shed does not autogenerate for it (today: Python, Ruby, Bun, static, Deno, Elixir, PHP, Rust, shell, Go workspaces). | Hand-author `SHED.yaml`. The executor is provider-neutral. |
+| `detection_failed` | Railpack could not identify the project type. | Add a lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`) or `go.mod`. Or hand-author `SHED.hcl`. |
+| `unsupported_project` | Railpack identified the type, but shed does not autogenerate for it (today: Python, Ruby, Bun, static, Deno, Elixir, PHP, Rust, shell, Go workspaces). | Hand-author `SHED.hcl`. The executor is provider-neutral. |
 | `missing_package_json` | Node detection ran but `package.json` is missing. | Add one, or hand-author. |
 | `missing_lockfile` | Node project without a supported lockfile. | Commit `package-lock.json` / `npm-shrinkwrap.json` / `yarn.lock` / `pnpm-lock.yaml` / `bun.lock(b)`. |
 | `missing_go_mod` | Go project without a root `go.mod` (workspaces-only). | Add a root `go.mod` or hand-author. |
-| `no_build_command` | The plan produced no build step (rare). | Add a `build.commands` entry in hand-authored `SHED.yaml`. |
+| `no_build_command` | The plan produced no build step (rare). | Add a `build.commands` entry in hand-authored `SHED.hcl`. |
 
 ### Invocation
 
@@ -65,7 +65,7 @@ Error: could not detect a supported project
 
 Next steps:
   • Add a lockfile (package-lock.json, pnpm-lock.yaml, or yarn.lock)
-  • Or hand-author SHED.yaml — the executor is provider-neutral
+  • Or hand-author SHED.hcl — the executor is provider-neutral
 ```
 
 - Bold summary line.

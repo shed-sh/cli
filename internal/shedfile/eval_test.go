@@ -33,7 +33,7 @@ http_app(
 `
 
 // The program and a hand-assembled manifest must marshal to the same bytes:
-// the DSL is a different spelling of SHED.yaml, not a different contract.
+// the DSL is a different spelling of SHED.hcl, not a different contract.
 func TestEvaluateMatchesHandWrittenManifest(t *testing.T) {
 	generated, diags := Evaluate([]byte(goProgram), goUniverse)
 	if len(diags) > 0 {
@@ -57,12 +57,12 @@ func TestEvaluateMatchesHandWrittenManifest(t *testing.T) {
 			StopSignal:       "SIGTERM",
 		},
 	}
-	expectedYAML, err := expected.Marshal()
+	expectedSource, err := expected.Marshal()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(generated.YAML, expectedYAML) {
-		t.Fatalf("YAML differs:\n%s\n---\n%s", generated.YAML, expectedYAML)
+	if !bytes.Equal(generated.Source, expectedSource) {
+		t.Fatalf("source differs:\n%s\n---\n%s", generated.Source, expectedSource)
 	}
 	if !reflect.DeepEqual(generated.Manifest, expected) {
 		t.Fatalf("manifest = %#v", generated.Manifest)
@@ -72,7 +72,7 @@ func TestEvaluateMatchesHandWrittenManifest(t *testing.T) {
 	}
 
 	again, diags := Evaluate([]byte(goProgram), goUniverse)
-	if len(diags) > 0 || !bytes.Equal(again.YAML, generated.YAML) {
+	if len(diags) > 0 || !bytes.Equal(again.Source, generated.Source) {
 		t.Fatalf("second evaluation differed: %v", renderAll(diags))
 	}
 }
@@ -327,11 +327,11 @@ func TestRenderRoundTrip(t *testing.T) {
 			StopSignal:       "SIGTERM",
 		},
 	}
-	yamlData, err := manifest.Marshal()
+	encoded, err := manifest.Marshal()
 	if err != nil {
 		t.Fatal(err)
 	}
-	rendered, err := Render(definition.GeneratedDefinition{Manifest: manifest, YAML: yamlData, Provider: "node"})
+	rendered, err := Render(definition.GeneratedDefinition{Manifest: manifest, Source: encoded, Provider: "node"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,8 +340,8 @@ func TestRenderRoundTrip(t *testing.T) {
 	if len(diags) > 0 {
 		t.Fatalf("rendered program does not evaluate:\n%s\n%v", rendered, renderAll(diags))
 	}
-	if !bytes.Equal(evaluated.YAML, yamlData) {
-		t.Fatalf("round trip differs:\n%s\n---\n%s", evaluated.YAML, yamlData)
+	if !bytes.Equal(evaluated.Source, encoded) {
+		t.Fatalf("round trip differs:\n%s\n---\n%s", evaluated.Source, encoded)
 	}
 	if !strings.Contains(string(rendered), "# Detected: Node.js") {
 		t.Fatalf("rendered file lost its provenance:\n%s", rendered)
