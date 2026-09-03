@@ -22,7 +22,8 @@ shed deploy . --mock --output json
 They run as part of `task test` / `go test ./...`. They do not need Docker.
 
 `TestInstallScriptsPrintUsage` runs each root install script with `--help`,
-so the GitHub-raw entrypoints stay executable.
+so the GitHub-raw entrypoints stay executable. `install.sh` installs only
+the CLI; `install-skills.sh --local` copies the skill into a project.
 
 ## Pinned repositories
 

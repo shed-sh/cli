@@ -18,7 +18,8 @@ usage() {
 	cat <<'EOF'
 Install the shed CLI.
 
-Usage: install-cli.sh [options]
+Usage: install.sh [options]
+       install-cli.sh [options]
 
   --version <v>     Install a specific version (default: the latest release)
   --bin-dir <dir>   Where to put the binary (default: ~/.local/bin, or the

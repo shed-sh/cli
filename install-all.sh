@@ -1,13 +1,12 @@
 #!/bin/sh
-# Install the shed CLI and its agent skill.
+# Install the shed CLI and the skill globally on this machine.
 #
 #   curl -fsSL https://raw.githubusercontent.com/shed-sh/cli/main/install-all.sh | sh
 #
-# Each half has its own script — install-cli.sh and install-skills.sh — and
-# this one only runs both, so there is exactly one implementation of each
-# install path. When this script sits next to its siblings (a checkout, or the
-# published repository) it runs them directly; piped through curl it fetches
-# them from the canonical URL it is itself served from.
+# Prefer the split installers: install.sh (the CLI) and
+# install-skills.sh --global / --local. This script remains for anyone
+# who already curls it. When it sits next to its siblings it runs them
+# directly; piped through curl it fetches them from the canonical URL.
 set -eu
 
 BASE_URL="https://raw.githubusercontent.com/shed-sh/cli/main"
@@ -15,7 +14,7 @@ CLI_ARGS=""
 
 usage() {
 	cat <<'EOF'
-Install the shed CLI and its agent skill.
+Install the shed CLI and the skill globally on this machine.
 
 Usage: install-all.sh [options]
 
