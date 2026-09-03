@@ -29,7 +29,7 @@ npm-scope = "@shed-sh"
 
 # dist's build jobs ship a Rust toolchain and no Go one, so they need a
 # setup-go step injected before `dist build` runs ./dist-build.sh.
-github-build-setup = "build-setup.yml"
+github-build-setup = "../build-setup.yml"
 
 # One pipeline publishes the GitHub Release (which the curl installers
 # read), the CLI npm package (`npx @shed-sh/shed`), and the skill npm

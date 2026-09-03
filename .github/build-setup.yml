@@ -3,6 +3,11 @@
 # Rust toolchain because that is what dist was built around; nothing there
 # provides Go, so dist-build.sh cannot find `go` without this step.
 #
+# This is a bare list of steps rather than a workflow, so it must NOT live in
+# .github/workflows/ -- GitHub parses everything in there as a workflow and
+# fails the run with "A sequence was not expected". dist resolves the path
+# relative to .github/workflows/, hence the ../ in the config.
+#
 # The version tracks go.mod, the same source ci.yml pins to, so the released
 # binary is built with the toolchain the tests ran under.
 - name: Set up Go
